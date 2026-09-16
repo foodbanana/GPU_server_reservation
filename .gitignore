@@ -17,3 +17,6 @@ __pycache__/
 # 프론트엔드 (Phase 2 이후)
 node_modules/
 frontend/dist/
+
+# 타임라인 확인용 데모 DB (scripts/seed_demo.py 가 만든다)
+backend/demo/

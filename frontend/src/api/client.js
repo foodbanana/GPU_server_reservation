@@ -76,7 +76,7 @@ function 오류메시지(data, status) {
   return `요청이 실패했습니다. (오류 코드 ${status})`
 }
 
-// 화면에서 쓰는 서버 호출 모음 (Phase 2 범위)
+// 화면에서 쓰는 서버 호출 모음
 export const api = {
   signup: (body) => request('/api/auth/signup', { method: 'POST', body, auth: false }),
   login: (body) => request('/api/auth/login', { method: 'POST', body, auth: false }),
@@ -85,5 +85,7 @@ export const api = {
   gpus: () => request('/api/gpus'),
   gpuReservations: (gpuId, start, end) =>
     request(`/api/gpus/${gpuId}/reservations`, { params: { start, end } }),
+  // 타임라인 화면용: 기간과 겹치는 모든 예약 (예약자 이름 포함)
+  reservations: (start, end) => request('/api/reservations', { params: { start, end } }),
   createReservation: (body) => request('/api/reservations', { method: 'POST', body }),
 }

@@ -61,6 +61,28 @@ PYTHONPATH= venv/bin/python -m uvicorn app.main:app --reload --port 8000
 rm -f data/gpu.db data/gpu.db-wal data/gpu.db-shm   # 서버를 끈 상태에서
 ```
 
+### 타임라인 화면 확인용 데모 데이터 (Phase 3)
+
+진짜 DB(`data/gpu.db`)는 **건드리지 않는다.** `backend/demo/` 폴더에 데모 전용 설정과 DB를
+따로 만들어서 거기에만 가짜 예약을 넣는다. (`backend/demo/` 는 git에 올라가지 않는다)
+
+```bash
+cd backend
+PYTHONPATH= venv/bin/python scripts/seed_demo.py      # 데모 DB + 예약 16건 만들기 (다시 실행하면 새로 만듦)
+```
+
+그다음 **데모 설정으로** 서버를 켠다 (평소 명령과 달리 앞에 `GPU_RESERVE_CONFIG=` 가 붙는다):
+
+```bash
+cd backend
+GPU_RESERVE_CONFIG=demo/config.yaml PYTHONPATH= \
+  venv/bin/python -m uvicorn app.main:app --reload --port 8000 --host 0.0.0.0
+```
+
+데모 로그인: `minjun@example.com` / 비밀번호 `demo1234` (다른 계정은 스크립트 실행 결과에 나온다)
+
+데모를 지우고 싶으면 폴더째 지우면 된다: `rm -rf backend/demo`
+
 ---
 
 ## 프론트엔드 (Phase 2~)
@@ -96,6 +118,8 @@ npm run dev
 ip addr | grep "inet "      # 데스크탑 IP 확인
 # 휴대폰 브라우저에서 http://<데스크탑IP>:5173
 ```
+휴대폰이 없어도 PC 크롬에서 **F12 → 왼쪽 위 휴대폰 모양 아이콘(Ctrl+Shift+M)** 을 누르면
+휴대폰 화면 크기로 볼 수 있다. (iPhone 14 / Galaxy S20 등 선택)
 
 ### 빌드 (Phase 5 배포용 미리보기)
 ```bash

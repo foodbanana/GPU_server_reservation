@@ -42,7 +42,7 @@ async function 가입() {
       password: password.value,
       inviteCode: inviteCode.value.trim(),
     })
-    router.push({ name: 'reserve' })
+    router.push({ name: 'timeline' })
   } catch (e) {
     // 가입 코드 문제면 입력칸 아래에, 그 밖의 문제면 일반 오류 상자에 보여 준다.
     // (서버가 보내 준 메시지를 그대로 쓰며, 실제 가입 코드 값은 어디에도 담기지 않는다)

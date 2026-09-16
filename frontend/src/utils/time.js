@@ -54,3 +54,22 @@ export function formatKst(isoString) {
 
 /** 0~23 시 목록 (예약은 정시 단위이므로) */
 export const HOURS = Array.from({ length: 24 }, (_, i) => i)
+
+/** '2026-09-16' -> '화' (한국 요일 한 글자) */
+const 요일형식 = new Intl.DateTimeFormat('ko-KR', { timeZone: KST, weekday: 'short' })
+export function weekdayKo(dateStr) {
+  // 정오를 기준으로 봐야 시간대 계산에서 하루가 밀리지 않는다
+  return 요일형식.format(new Date(toIso(dateStr, 12)))
+}
+
+/** '2026-09-16' -> '9/16' (타임라인 날짜 머리글용 짧은 표기) */
+export function shortDate(dateStr) {
+  const [, month, day] = dateStr.split('-')
+  return `${Number(month)}/${Number(day)}`
+}
+
+/** 서버가 준 ISO 문자열을 '9/16 14:00' 처럼 짧게 (툴팁용) */
+export function formatKstShort(isoString) {
+  const { date, hour, minute } = kstParts(new Date(isoString))
+  return `${shortDate(date)} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}

@@ -17,7 +17,7 @@ async function 로그인() {
   보내는중.value = true
   try {
     await auth.login({ email: email.value.trim(), password: password.value })
-    router.push(route.query.next || { name: 'reserve' })
+    router.push(route.query.next || { name: 'timeline' })
   } catch (e) {
     오류.value = e.message
   } finally {

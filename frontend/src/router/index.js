@@ -5,11 +5,18 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import SignupView from '../views/SignupView.vue'
 import NewReservationView from '../views/NewReservationView.vue'
+import TimelineView from '../views/TimelineView.vue'
 import { getToken } from '../api/client'
 
 const routes = [
-  // Phase 3에서 메인 화면(타임라인)이 생기면 '/' 는 그쪽으로 바뀐다.
-  { path: '/', redirect: '/reserve' },
+  {
+    // 메인 화면 = 2주 예약 현황 타임라인 (Phase 3)
+    path: '/',
+    name: 'timeline',
+    component: TimelineView,
+    // 타임라인은 표가 넓어서 본문 폭 제한을 풀어 준다 (App.vue 에서 사용)
+    meta: { wide: true },
+  },
   { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
   { path: '/signup', name: 'signup', component: SignupView, meta: { public: true } },
   {
@@ -18,13 +25,13 @@ const routes = [
     component: NewReservationView,
   },
   {
-    // GPU 버튼을 누르면 이 주소로 온다. 같은 화면이 예약 신청 폼으로 바뀐다.
+    // GPU 버튼(또는 타임라인의 GPU 줄)을 누르면 이 주소로 온다.
     path: '/reserve/:gpuId',
     name: 'reserve-gpu',
     component: NewReservationView,
     props: true,
   },
-  { path: '/:pathMatch(.*)*', redirect: '/reserve' },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
@@ -38,7 +45,7 @@ router.beforeEach((to) => {
     return { name: 'login', query: { next: to.fullPath } }
   }
   if (to.meta.public && 로그인함) {
-    return { name: 'reserve' }
+    return { name: 'timeline' }
   }
   return true
 })
