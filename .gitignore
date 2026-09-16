@@ -1,5 +1,6 @@
 # 비밀 설정 (가입 코드, JWT 비밀키가 들어 있음)
 backend/config.yaml
+backend/config.dev.yaml
 backend/secrets/
 
 # DB 파일
@@ -20,3 +21,9 @@ frontend/dist/
 
 # 타임라인 확인용 데모 DB (scripts/seed_demo.py 가 만든다)
 backend/demo/
+
+# 개발용 DB (scripts/init_dev.py 가 만든다. 운영 DB 와 분리)
+backend/dev/
+
+# 백업 설정 (백업 폴더 경로는 컴퓨터마다 다르다)
+deploy/backup.conf

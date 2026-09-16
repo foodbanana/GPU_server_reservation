@@ -50,6 +50,7 @@ class Config:
     jwt_secret: str
     jwt_expire_days: int
     database_path: Path
+    static_dir: Path | None
     rules: Rules
     gpus: tuple[GpuSpec, ...]
     google_enabled: bool
@@ -79,10 +80,20 @@ def load_config(path: Path | None = None) -> Config:
     if len(gpus_raw) == 0:
         raise RuntimeError(f"{path} 의 gpus 목록이 비어 있습니다.")
 
-    # database_path 는 설정 파일 위치를 기준으로 한 상대경로로 해석한다.
-    db_path = Path(app_raw.get("database_path", "../data/gpu.db"))
-    if not db_path.is_absolute():
-        db_path = (path.resolve().parent / db_path).resolve()
+    # database_path / static_dir 는 설정 파일 위치를 기준으로 한 상대경로로 해석한다.
+    base_dir = path.resolve().parent
+
+    def resolve(value: str) -> Path:
+        p = Path(value)
+        return p if p.is_absolute() else (base_dir / p).resolve()
+
+    db_path = resolve(str(app_raw.get("database_path", "../data/gpu.db")))
+
+    # static_dir: Vue 를 빌드한 결과 폴더(frontend/dist). 이걸 FastAPI 가 함께 서빙해서
+    # 포트 하나(8000)로 화면과 API를 모두 제공한다(Phase 5, SPEC 10장).
+    # 빈 값("" 또는 null)으로 두면 정적 파일을 서빙하지 않는다(개발용 설정에서 사용).
+    static_raw = app_raw.get("static_dir", "../frontend/dist")
+    static_dir = resolve(str(static_raw)) if static_raw else None
 
     def category_rule(name: str, default_min: int, default_max: int) -> CategoryRule:
         node = rules_raw.get(name, {}) or {}
@@ -112,6 +123,7 @@ def load_config(path: Path | None = None) -> Config:
         jwt_secret=str(app_raw["jwt_secret"]),
         jwt_expire_days=int(app_raw.get("jwt_expire_days", 30)),
         database_path=db_path,
+        static_dir=static_dir,
         rules=Rules(
             slot_minutes=int(rules_raw.get("slot_minutes", 60)),
             booking_horizon_days=int(rules_raw.get("booking_horizon_days", 14)),

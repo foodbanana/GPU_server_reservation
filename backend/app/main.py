@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.config import get_config
 from app.database import Base, SessionLocal, engine
 from app.models import Gpu, Reservation, User  # noqa: F401  (테이블 등록에 필요)
 from app.routers import admin, auth, gpus, reservations
 from app.seed import seed_gpus
+from app.static_files import mount_frontend
 
 
 @asynccontextmanager
@@ -38,3 +40,9 @@ app.include_router(admin.router)
 def health() -> dict[str, str]:
     """서버가 살아 있는지 확인용."""
     return {"status": "ok"}
+
+
+# 빌드된 Vue 화면 서빙 (Phase 5).
+# 반드시 맨 마지막에 붙인다: 먼저 등록된 /api/... 와 /docs 가 우선이고,
+# 남은 모든 주소("/", "/my", "/admin" 등)만 화면 쪽으로 넘어간다.
+mount_frontend(app, get_config().static_dir)

@@ -1,0 +1,52 @@
+# 연구실 GPU 예약 시스템 — systemd 서비스 파일 (Phase 5)
+#
+# systemd = 우분투가 프로그램을 백그라운드로 돌려 주는 관리자.
+# 이 파일을 등록해 두면 터미널을 닫아도 서버가 계속 돌고,
+# 컴퓨터를 껐다 켜도 자동으로 다시 시작된다.
+#
+# 설치 (사용자가 직접 실행. README.md 참고):
+#   sudo cp /home/taeung/GPU_server_reservation_ws/deploy/gpu-reserve.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gpu-reserve
+#
+# 경로를 바꿨다면 아래 WorkingDirectory / Environment / ExecStart 의 경로도 같이 고쳐야 한다.
+
+[Unit]
+Description=연구실 GPU 예약 시스템 (FastAPI + Vue)
+# 네트워크가 준비된 다음에 켠다
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# 내 계정으로 실행한다. root 로 돌리지 않는다(필요도 없고 위험하다).
+User=taeung
+Group=taeung
+
+WorkingDirectory=/home/taeung/GPU_server_reservation_ws/backend
+
+# 이 컴퓨터는 ROS(/opt/ros/jazzy)가 PYTHONPATH 에 들어 있어서
+# 파이썬이 엉뚱한 모듈을 읽을 수 있다. 빈 값으로 덮어써서 충돌을 막는다.
+Environment=PYTHONPATH=
+# 어떤 설정 파일을 쓸지 못 박는다. 운영 설정 = config.yaml (DB는 data/gpu.db)
+Environment=GPU_RESERVE_CONFIG=/home/taeung/GPU_server_reservation_ws/backend/config.yaml
+# 로그가 버퍼에 쌓여 늦게 보이는 것을 막는다
+Environment=PYTHONUNBUFFERED=1
+
+# 운영에서는 --reload 를 쓰지 않는다 (코드가 바뀔 때마다 서버가 끊기면 안 된다).
+# --host 0.0.0.0 이라야 같은 네트워크의 휴대폰·다른 PC에서 접속할 수 있다.
+ExecStart=/home/taeung/GPU_server_reservation_ws/backend/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 비정상 종료(오류로 죽음)하면 5초 뒤 자동으로 다시 켠다.
+Restart=always
+RestartSec=5
+
+# 로그는 journald 로 보낸다. 보는 법: journalctl -u gpu-reserve -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gpu-reserve
+
+[Install]
+# 부팅해서 평소 상태가 되면 자동으로 켠다
+WantedBy=multi-user.target

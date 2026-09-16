@@ -1,0 +1,21 @@
+# DB 백업 설정 예시 (Phase 5)
+#
+# 쓰는 법: 이 파일을 backup.conf 로 복사한 뒤 값을 고친다.
+#   cp deploy/backup.conf.example deploy/backup.conf
+# backup.conf 는 .gitignore 에 들어 있어 git 에 올라가지 않는다.
+#
+# 아무것도 안 고쳐도 backup_db.sh 는 기본값으로 잘 동작한다.
+# 나중에 백업을 외장 디스크나 다른 서버로 옮기고 싶을 때 여기만 바꾸면 된다.
+
+# 백업을 쌓아 둘 폴더 (기본: ~/gpu-reserve-backups)
+#   외장 디스크 예시:
+# BACKUP_DIR="/media/taeung/외장디스크/gpu-reserve-backups"
+#   다른 서버(NAS 등)를 미리 mount 해 뒀다면:
+# BACKUP_DIR="/mnt/nas/gpu-reserve-backups"
+BACKUP_DIR="$HOME/gpu-reserve-backups"
+
+# 며칠 지난 백업을 자동으로 지울지 (기본: 30)
+KEEP_DAYS=30
+
+# 백업할 DB 파일 (기본: 이 저장소의 data/gpu.db). 보통 바꿀 일이 없다.
+# DB_PATH="/home/taeung/GPU_server_reservation_ws/data/gpu.db"

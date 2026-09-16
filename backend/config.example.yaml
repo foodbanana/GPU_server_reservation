@@ -9,7 +9,9 @@ app:
   jwt_secret: ""            # 긴 임의 문자열. 아래 명령으로 만들 수 있다:
                             #   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
   jwt_expire_days: 30
-  database_path: "../data/gpu.db"   # 이 설정 파일 기준 상대경로
+  database_path: "../data/gpu.db"   # 이 설정 파일 기준 상대경로. 운영 DB.
+  static_dir: "../frontend/dist"    # `npm run build` 결과 폴더. FastAPI 가 화면도 같이 서빙한다.
+                                    # 빈 값("")으로 두면 화면은 서빙하지 않고 API만 제공한다.
 
 rules:
   slot_minutes: 60            # 예약 단위 (1시간)
