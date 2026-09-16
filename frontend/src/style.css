@@ -1,0 +1,107 @@
+:root {
+  --green: #2e7d32;
+  --red: #c62828;
+  --gray-line: #d8dde3;
+  --gray-bg: #f5f7fa;
+  --text: #22272e;
+  --muted: #667085;
+  font-family: system-ui, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--gray-bg);
+  /* 휴대폰에서 화면이 좌우로 넘치지 않게 */
+  overflow-x: hidden;
+}
+
+button {
+  font-family: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+input,
+select {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--gray-line);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  width: 100%;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--gray-line);
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+
+.btn-primary {
+  background: #1a73e8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.7rem 1rem;
+  font-weight: 600;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--gray-line);
+  border-radius: 6px;
+  padding: 0.7rem 1rem;
+}
+
+/* 서버가 보내 준 한국어 오류 메시지 상자 */
+.error-box {
+  background: #fdecea;
+  border: 1px solid #f5c2c0;
+  color: var(--red);
+  border-radius: 6px;
+  padding: 0.75rem 0.9rem;
+  margin: 0.75rem 0;
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+.success-box {
+  background: #e8f5e9;
+  border: 1px solid #b7dfba;
+  color: var(--green);
+  border-radius: 6px;
+  padding: 0.75rem 0.9rem;
+  margin: 0.75rem 0;
+  line-height: 1.5;
+}
+
+.field {
+  margin-bottom: 0.9rem;
+}
+
+.field label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+}

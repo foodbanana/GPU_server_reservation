@@ -116,7 +116,7 @@ def load_config(path: Path | None = None) -> Config:
             slot_minutes=int(rules_raw.get("slot_minutes", 60)),
             booking_horizon_days=int(rules_raw.get("booking_horizon_days", 14)),
             short=category_rule("short", 1, 48),
-            long=category_rule("long", 72, 336),
+            long=category_rule("long", 48, 336),
         ),
         gpus=gpus,
         google_enabled=bool((raw.get("google", {}) or {}).get("enabled", False)),

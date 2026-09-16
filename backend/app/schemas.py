@@ -17,7 +17,9 @@ from app import timeutil
 class SignupRequest(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=72)
+    # 비밀번호 길이 제한은 두지 않는다. 다만 빈 값과 bcrypt 한계(72바이트) 초과는
+    # routers/auth.py 에서 한국어 메시지와 함께 막는다.
+    password: str
     invite_code: str
 
 

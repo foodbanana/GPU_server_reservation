@@ -21,6 +21,8 @@
 - 비밀번호, 구글 credentials/토큰, .env, DB 파일은 git에 커밋하지 않는다.
 - `sudo`가 필요한 명령은 직접 실행하지 말고 사용자에게 실행할 명령을 알려준다.
 - 새 라이브러리를 추가하면 requirements.txt / package.json에 반영한다.
+- data/ 폴더의 DB 파일은 절대 직접 삭제하거나 덮어쓰지 않는다. 테스트나 확인에는 임시 DB 경로를 사용하고, 초기화가 꼭 필요하면 먼저 사용자에게 묻는다.
+- 사용자가 직접 실행 중인 서버 프로세스를 종료하지 않는다. 재시작이 필요하면 사용자에게 요청한다.
 
 ## 자주 쓰는 명령어
 
@@ -59,4 +61,48 @@ PYTHONPATH= venv/bin/python -m uvicorn app.main:app --reload --port 8000
 rm -f data/gpu.db data/gpu.db-wal data/gpu.db-shm   # 서버를 끈 상태에서
 ```
 
-(Phase 2가 끝나면 프론트엔드 명령어를 여기에 추가할 것)
+---
+
+## 프론트엔드 (Phase 2~)
+
+Node.js **v24.21.0**, npm **11.19.0** 사용.
+
+### 처음 한 번만 (설치)
+```bash
+cd frontend
+npm install
+```
+
+### 개발 중에는 터미널 2개를 띄운다
+
+**터미널 1 — 백엔드 (포트 8000)**
+```bash
+cd backend
+PYTHONPATH= venv/bin/python -m uvicorn app.main:app --reload --port 8000
+```
+
+**터미널 2 — 프론트엔드 (포트 5173)**
+```bash
+cd frontend
+npm run dev
+```
+
+그다음 브라우저에서 **http://localhost:5173** 접속.
+화면에서 부르는 `/api/...` 요청은 vite 가 8000번 백엔드로 대신 넘겨준다(vite.config.js 의 proxy).
+**백엔드를 먼저 켜야 한다.** 안 켜져 있으면 "서버에 연결할 수 없습니다" 오류가 뜬다.
+
+### 휴대폰에서 확인할 때
+```bash
+ip addr | grep "inet "      # 데스크탑 IP 확인
+# 휴대폰 브라우저에서 http://<데스크탑IP>:5173
+```
+
+### 빌드 (Phase 5 배포용 미리보기)
+```bash
+cd frontend
+npm run build      # 결과가 frontend/dist 에 생긴다
+npm run preview
+```
+
+### 로그인이 꼬였을 때
+브라우저 개발자도구(F12) → Application → Local Storage → `gpu-reserve-token` 삭제

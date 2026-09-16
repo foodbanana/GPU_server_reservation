@@ -30,7 +30,13 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> User:
     if body.invite_code.strip() != config.invite_code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="가입 코드가 올바르지 않습니다.",
+            detail="연구실 가입 코드가 올바르지 않습니다.",
+        )
+
+    if len(body.password) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="비밀번호를 입력해 주세요.",
         )
 
     if password_too_long(body.password):

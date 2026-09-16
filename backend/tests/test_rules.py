@@ -109,22 +109,30 @@ def test_단주기_49시간은_거부된다(client, headers, short_gpu, clock):
     assert "단주기" in detail and "48시간" in detail
 
 
-# 장주기: 최소 72시간, 최대 336시간(14일)
+# 장주기: 최소 48시간, 최대 336시간(14일)
 
-@pytest.mark.parametrize("hours", [72, 200, 336])
+@pytest.mark.parametrize("hours", [48, 200, 336])
 def test_장주기_허용_범위는_통과한다(client, headers, long_gpu, clock, hours):
     start = clock.hour(1)
     response = create_reservation(client, headers, long_gpu, start, start + timedelta(hours=hours))
     assert response.status_code == 201, response.text
 
 
-@pytest.mark.parametrize("hours", [1, 24, 71])
-def test_장주기_72시간_미만은_거부된다(client, headers, long_gpu, clock, hours):
+@pytest.mark.parametrize("hours", [1, 24, 47])
+def test_장주기_48시간_미만은_거부된다(client, headers, long_gpu, clock, hours):
     start = clock.hour(1)
     response = create_reservation(client, headers, long_gpu, start, start + timedelta(hours=hours))
     assert response.status_code == 400
     detail = response.json()["detail"]
-    assert "장주기" in detail and "72시간" in detail
+    assert "장주기" in detail and "48시간" in detail
+
+
+def test_48시간은_단주기_장주기_양쪽에서_모두_허용된다(client, headers, short_gpu, long_gpu, clock):
+    """단주기 최대(48h)와 장주기 최소(48h)가 맞닿아 있으므로 둘 다 통과해야 한다."""
+    start = clock.hour(1)
+    end = start + timedelta(hours=48)
+    assert create_reservation(client, headers, short_gpu, start, end).status_code == 201
+    assert create_reservation(client, headers, long_gpu, start, end).status_code == 201
 
 
 def test_장주기_337시간은_거부된다(client, headers, long_gpu, clock):
@@ -155,7 +163,7 @@ def test_설정값_조회(client):
     body = response.json()
     assert body["timezone"] == "Asia/Seoul"
     assert body["short"] == {"min_hours": 1, "max_hours": 48}
-    assert body["long"] == {"min_hours": 72, "max_hours": 336}
+    assert body["long"] == {"min_hours": 48, "max_hours": 336}
     assert body["booking_horizon_days"] == 14
 
 

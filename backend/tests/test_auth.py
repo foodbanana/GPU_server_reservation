@@ -25,7 +25,7 @@ def test_가입코드가_틀리면_가입되지_않는다(client):
         },
     )
     assert response.status_code == 400
-    assert response.json()["detail"] == "가입 코드가 올바르지 않습니다."
+    assert response.json()["detail"] == "연구실 가입 코드가 올바르지 않습니다."
 
     # 가입되지 않았으므로 로그인도 안 된다
     login = client.post(
@@ -61,6 +61,55 @@ def test_같은_이메일로_두_번_가입할_수_없다(client):
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "이미 가입된 이메일입니다."
+
+
+def test_비밀번호는_한_글자여도_가입된다(client):
+    """비밀번호 최소 글자 수 제한은 두지 않는다."""
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "name": "김철수",
+            "email": "short-pw@example.com",
+            "password": "a",
+            "invite_code": TEST_INVITE_CODE,
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    # 그 비밀번호로 로그인도 되어야 한다
+    login = client.post(
+        "/api/auth/login", json={"email": "short-pw@example.com", "password": "a"}
+    )
+    assert login.status_code == 200, login.text
+
+
+def test_빈_비밀번호는_거부된다(client):
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "name": "김철수",
+            "email": "empty-pw@example.com",
+            "password": "",
+            "invite_code": TEST_INVITE_CODE,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "비밀번호를 입력해 주세요."
+
+
+def test_너무_긴_비밀번호는_거부된다(client):
+    """bcrypt 는 72바이트까지만 처리하므로 조용히 잘리지 않게 막는다."""
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "name": "김철수",
+            "email": "long-pw@example.com",
+            "password": "가" * 30,  # 한글 1자 = 3바이트 -> 90바이트
+            "invite_code": TEST_INVITE_CODE,
+        },
+    )
+    assert response.status_code == 400
+    assert "너무 깁니다" in response.json()["detail"]
 
 
 def test_비밀번호가_틀리면_로그인_실패(client):

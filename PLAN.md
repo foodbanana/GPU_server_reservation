@@ -118,7 +118,7 @@ rules:
     min_hours: 1
     max_hours: 48
   long:                       # 장주기
-    min_hours: 72
+    min_hours: 48
     max_hours: 336            # 14일
 
 gpus:                         # 서버3 A100/maxQ 번호가 반대면 여기만 고치면 됨
@@ -262,7 +262,7 @@ SQLite에는 "시간 겹침 금지" 제약을 직접 걸 수 없으므로:
 | 2 | `end_at > start_at` 인가 | ✅ 항상 |
 | 3 | `start_at`이 **현재 시각이 속한 정시(내림) 이상**인가 | ✅ 항상 |
 | 4 | `start_at`이 지금부터 14일 이내인가 | ❌ 관리자는 무시 |
-| 5 | 길이가 해당 GPU 분류의 min~max 범위인가 (단주기 1~48h, 장주기 72h~14일) | ❌ 관리자는 무시 |
+| 5 | 길이가 해당 GPU 분류의 min~max 범위인가 (단주기 1~48h, 장주기 48h~14일) | ❌ 관리자는 무시 |
 | 6 | 같은 GPU의 다른 `active` 예약과 겹치는가 | ✅ **항상** (관리자도 절대 예외 없음) |
 
 - **검사 3 (변경점)**: 현재가 14:20이면 `start_at`이 14:00인 예약은 **허용**한다(지금 당장 쓰기 시작하는 경우).
@@ -322,13 +322,13 @@ sudo apt install -y python3 python3-venv python3-pip git
 
 | 확인 명령 | 필요한 것 |
 |---|---|
-| `node --version` | Node.js **20 이상** (Vite 5 요구사항) |
-| `npm --version` | npm |
+| `node --version` | Node.js **24 LTS** (설치 완료: v24.21.0) |
+| `npm --version` | npm (설치 완료: 11.19.0) |
 
 없거나 버전이 낮을 때 안내할 명령 (사용자가 직접 실행):
 ```bash
 # Ubuntu 24.04 기본 저장소 Node는 버전이 낮을 수 있으므로 NodeSource 사용
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
 
@@ -467,7 +467,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000   # http://<IP>:8000 하나로 �
 1. 가입(잘못된 코드 → 거부) → 로그인
 2. 단주기 GPU 2시간 예약 → 타임라인에 빨강으로 보임
 3. 같은 GPU·같은 시간 다시 예약 → "이미 예약된 시간입니다" 류의 한국어 오류
-4. 장주기 GPU에 24시간 예약 시도 → 최소 72시간 위반 오류
+4. 장주기 GPU에 24시간 예약 시도 → 최소 48시간 위반 오류
 5. 진행 중인 예약 조기 종료 → 남은 칸이 초록으로 반환됨
 6. 다른 계정으로 남의 예약 취소 시도 → 거부
 7. 관리자로 남의 예약 시간을 100시간짜리로 수정 → 성공하되 경고 문구 표시

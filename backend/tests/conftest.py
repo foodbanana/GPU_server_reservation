@@ -32,7 +32,7 @@ rules:
     min_hours: 1
     max_hours: 48
   long:
-    min_hours: 72
+    min_hours: 48
     max_hours: 336
 
 gpus:
