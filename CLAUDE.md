@@ -23,4 +23,40 @@
 - 새 라이브러리를 추가하면 requirements.txt / package.json에 반영한다.
 
 ## 자주 쓰는 명령어
-(Phase 1, 2가 끝나면 실행·테스트 명령어를 여기에 추가할 것)
+
+> **주의:** 이 컴퓨터는 ROS(`/opt/ros/jazzy`)가 `PYTHONPATH`에 들어 있어서
+> pytest가 ROS 플러그인을 잘못 읽고 오류를 낸다.
+> 그래서 아래 명령에는 `PYTHONPATH=` 를 붙여 ROS 경로를 잠깐 비운다.
+
+### 처음 한 번만 (설치)
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp config.example.yaml config.yaml   # 그다음 invite_code, jwt_secret 채우기
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # jwt_secret 만들기
+```
+
+### 테스트 실행
+```bash
+cd backend
+PYTHONPATH= venv/bin/python -m pytest          # 전체
+PYTHONPATH= venv/bin/python -m pytest -v       # 테스트 이름까지 보기
+PYTHONPATH= venv/bin/python -m pytest tests/test_overlap.py   # 파일 하나만
+```
+
+### 서버 실행
+```bash
+cd backend
+PYTHONPATH= venv/bin/python -m uvicorn app.main:app --reload --port 8000
+# 브라우저에서 http://localhost:8000/docs  (API를 직접 눌러볼 수 있는 화면)
+# 다른 기기에서 접속하려면 --host 0.0.0.0 을 추가
+```
+
+### DB 초기화 (처음부터 다시)
+```bash
+rm -f data/gpu.db data/gpu.db-wal data/gpu.db-shm   # 서버를 끈 상태에서
+```
+
+(Phase 2가 끝나면 프론트엔드 명령어를 여기에 추가할 것)

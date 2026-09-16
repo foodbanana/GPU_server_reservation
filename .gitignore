@@ -1,0 +1,19 @@
+# 비밀 설정 (가입 코드, JWT 비밀키가 들어 있음)
+backend/config.yaml
+backend/secrets/
+
+# DB 파일
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# 파이썬
+backend/venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 프론트엔드 (Phase 2 이후)
+node_modules/
+frontend/dist/

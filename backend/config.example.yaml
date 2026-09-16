@@ -1,0 +1,42 @@
+# 이 파일은 git에 올라가는 "예시"다.
+# 실제로 쓸 때는 이 파일을 config.yaml 로 복사한 뒤 비밀값을 채운다.
+#   cp config.example.yaml config.yaml
+# config.yaml 은 .gitignore 에 들어 있어 git에 올라가지 않는다.
+
+app:
+  timezone: "Asia/Seoul"
+  invite_code: ""           # 연구실 가입 코드 (빈 값이면 회원가입 불가)
+  jwt_secret: ""            # 긴 임의 문자열. 아래 명령으로 만들 수 있다:
+                            #   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+  jwt_expire_days: 30
+  database_path: "../data/gpu.db"   # 이 설정 파일 기준 상대경로
+
+rules:
+  slot_minutes: 60            # 예약 단위 (1시간)
+  booking_horizon_days: 14    # 지금부터 며칠 뒤까지 예약 가능한가
+  short:                      # 단주기
+    min_hours: 1
+    max_hours: 48
+  long:                       # 장주기
+    min_hours: 72
+    max_hours: 336            # 14일
+
+gpus:                         # 서버3 A100/maxQ 번호가 반대면 여기만 고치면 된다
+  - { server_no: 1, gpu_index: 0, model: "A6000",     category: short }
+  - { server_no: 1, gpu_index: 1, model: "A6000",     category: short }
+  - { server_no: 1, gpu_index: 2, model: "A6000",     category: long  }
+  - { server_no: 1, gpu_index: 3, model: "A6000",     category: long  }
+  - { server_no: 2, gpu_index: 0, model: "RTX 3090",  category: short }
+  - { server_no: 2, gpu_index: 1, model: "RTX 3090",  category: short }
+  - { server_no: 2, gpu_index: 2, model: "RTX 3090",  category: long  }
+  - { server_no: 2, gpu_index: 3, model: "RTX 3090",  category: long  }
+  - { server_no: 3, gpu_index: 0, model: "A100",      category: short }
+  - { server_no: 3, gpu_index: 1, model: "A100",      category: long  }
+  - { server_no: 3, gpu_index: 2, model: "maxQ 6000", category: short }
+  - { server_no: 3, gpu_index: 3, model: "maxQ 6000", category: long  }
+
+google:                       # Phase 6에서 사용. Phase 1에서는 읽기만 하고 쓰지 않는다.
+  enabled: false
+  calendar_id: "primary"
+  credentials_path: "secrets/credentials.json"
+  token_path: "secrets/token.json"

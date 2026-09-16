@@ -1,0 +1,12 @@
+# 설치: python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+SQLAlchemy==2.0.54
+pydantic[email]==2.13.5
+PyJWT==2.14.0
+bcrypt==5.0.0
+PyYAML==6.0.3
+
+# 테스트용
+pytest==9.1.1
+httpx==0.28.1
