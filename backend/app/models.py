@@ -101,5 +101,10 @@ class Reservation(Base):
         return self.user.name if self.user else ""
 
     @property
+    def user_email(self) -> str:
+        """관리자 화면에서만 쓴다 (일반 사용자 응답에는 넣지 않는다)."""
+        return self.user.email if self.user else ""
+
+    @property
     def gpu_label(self) -> str:
         return self.gpu.label if self.gpu else ""

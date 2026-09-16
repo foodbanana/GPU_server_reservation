@@ -59,10 +59,12 @@ os.environ["GPU_RESERVE_CONFIG"] = str(_CONFIG_PATH)
 
 # 여기서부터 app 모듈 import (위에서 환경변수를 설정한 뒤여야 한다)
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 from app import timeutil  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models import User  # noqa: E402
 from app.seed import seed_gpus  # noqa: E402
 
 # 테스트에서 쓰는 '고정된 현재 시각': 2026년 1월 5일 월요일 14시 20분
@@ -159,3 +161,21 @@ def create_reservation(
         headers=headers,
         json={"gpu_id": gpu_id, "start_at": iso(start), "end_at": iso(end)},
     )
+
+
+def make_admin(email: str) -> None:
+    """가입한 계정을 관리자로 올린다 (scripts/create_admin.py 가 하는 일과 같다)."""
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email.lower()))
+        assert user is not None, f"{email} 계정이 없습니다."
+        user.is_admin = True
+        db.commit()
+
+
+def admin_headers(
+    client: TestClient, email: str = "admin@example.com", name: str = "관리자"
+) -> dict:
+    """관리자 계정으로 가입 + 권한 부여 + 로그인."""
+    signup(client, email=email, name=name)
+    make_admin(email)
+    return login_headers(client, email=email)

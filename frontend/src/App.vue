@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 
@@ -10,16 +10,11 @@ const route = useRoute()
 // 타임라인처럼 넓은 화면은 본문 폭 제한을 푼다 (router/index.js 의 meta.wide)
 const 넓은화면 = computed(() => Boolean(route.meta.wide))
 
-onMounted(async () => {
-  // 새로고침했을 때 토큰만 있고 사용자 정보가 없으면 다시 받아온다
-  if (auth.isLoggedIn && !auth.user) {
-    try {
-      await auth.fetchMe()
-    } catch {
-      auth.logout()
-    }
-  }
-})
+// 관리자 메뉴는 관리자에게만 보인다 (주소를 직접 쳐도 router 와 서버가 막는다)
+const 관리자 = computed(() => Boolean(auth.user?.is_admin))
+
+// 새로고침했을 때 내 정보(이름·관리자 여부)를 다시 받아오는 일은
+// router/index.js 의 beforeEach 가 화면을 그리기 전에 처리한다.
 
 function 로그아웃() {
   auth.logout()
@@ -39,6 +34,8 @@ function 로그아웃() {
   <nav v-if="auth.isLoggedIn" class="menu">
     <RouterLink class="home" :to="{ name: 'timeline' }">예약 현황</RouterLink>
     <RouterLink :to="{ name: 'reserve' }">예약 신청</RouterLink>
+    <RouterLink :to="{ name: 'my-reservations' }">내 예약</RouterLink>
+    <RouterLink v-if="관리자" :to="{ name: 'admin' }">관리자</RouterLink>
   </nav>
 
   <main class="page" :class="{ wide: 넓은화면 }">

@@ -46,6 +46,7 @@ cd backend
 PYTHONPATH= venv/bin/python -m pytest          # 전체
 PYTHONPATH= venv/bin/python -m pytest -v       # 테스트 이름까지 보기
 PYTHONPATH= venv/bin/python -m pytest tests/test_overlap.py   # 파일 하나만
+PYTHONPATH= venv/bin/python -m pytest tests/test_permissions.py tests/test_admin.py tests/test_accounts.py  # 권한·관리자만
 ```
 
 ### 서버 실행
@@ -60,6 +61,49 @@ PYTHONPATH= venv/bin/python -m uvicorn app.main:app --reload --port 8000
 ```bash
 rm -f data/gpu.db data/gpu.db-wal data/gpu.db-shm   # 서버를 끈 상태에서
 ```
+
+### 관리자 계정 만들기 (Phase 4)
+
+관리자 화면(전체 예약 수정·삭제)은 관리자 계정으로만 들어갈 수 있다.
+웹 회원가입으로는 관리자가 될 수 없으므로 아래 명령으로 만든다. **서버는 켠 채로 실행해도 된다.**
+
+```bash
+cd backend
+PYTHONPATH= venv/bin/python scripts/create_admin.py
+# 물어보는 대로 이메일 → 이름 → 비밀번호(두 번) 입력. 비밀번호는 화면에 보이지 않는다.
+
+# 이메일·이름을 미리 줄 수도 있다
+PYTHONPATH= venv/bin/python scripts/create_admin.py --email me@example.com --name 홍길동
+```
+
+- **이미 가입한 이메일이면 계정을 새로 만들지 않고 그 계정을 관리자로 올린다.** 이름·비밀번호는 그대로 둔다.
+  (이 방법을 추천한다: 웹에서 평소처럼 가입 → 이 명령으로 권한만 올리기. 이때는 아무것도 묻지 않는다)
+- 관리자 권한을 준 뒤에는 **로그아웃했다가 다시 로그인**해야 화면에 `관리자` 메뉴가 보인다.
+
+### 관리자 권한 주기 / 뺏기 (Phase 4)
+
+```bash
+cd backend
+PYTHONPATH= venv/bin/python scripts/set_admin.py someone@example.com            # 권한 주기
+PYTHONPATH= venv/bin/python scripts/set_admin.py someone@example.com --revoke   # 권한 뺏기
+PYTHONPATH= venv/bin/python scripts/set_admin.py --list                         # 지금 관리자 목록
+```
+
+- 가입한 적 없는 이메일이면 오류를 내고 아무것도 바꾸지 않는다. (계정까지 만들려면 위의 `create_admin.py`)
+- **마지막 남은 관리자는 해제할 수 없다.** 아무도 관리자 화면에 못 들어가게 되기 때문이다.
+  다른 사람을 먼저 관리자로 지정한 뒤에 해제한다.
+
+### 비밀번호 재설정 (Phase 4)
+
+비밀번호를 잊은 사람이 있으면 서버에서 바꿔 준다. (이메일로 찾는 기능은 없다)
+
+```bash
+cd backend
+PYTHONPATH= venv/bin/python scripts/reset_password.py someone@example.com
+# 새 비밀번호를 두 번 입력. 화면에 보이지 않는다.
+```
+
+없는 이메일이면 오류만 내고 아무것도 바꾸지 않는다. 관리자 본인 계정도 같은 방법으로 재설정한다.
 
 ### 타임라인 화면 확인용 데모 데이터 (Phase 3)
 

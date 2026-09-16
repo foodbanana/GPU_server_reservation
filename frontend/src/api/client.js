@@ -88,4 +88,19 @@ export const api = {
   // 타임라인 화면용: 기간과 겹치는 모든 예약 (예약자 이름 포함)
   reservations: (start, end) => request('/api/reservations', { params: { start, end } }),
   createReservation: (body) => request('/api/reservations', { method: 'POST', body }),
+
+  // 내 예약 목록 (취소한 것 포함)
+  myReservations: () => request('/api/reservations/me'),
+  // 시작 전인 예약 취소
+  cancelReservation: (id) => request(`/api/reservations/${id}`, { method: 'DELETE' }),
+  // 사용 중인 예약 조기 종료 (종료 시각을 지금 정시로 당김)
+  endReservationNow: (id) =>
+    request(`/api/reservations/${id}/end-now`, { method: 'POST' }),
+
+  // ----- 관리자 전용 (관리자가 아니면 서버가 403으로 막는다) -----
+  adminReservations: (params) => request('/api/admin/reservations', { params }),
+  adminUpdateReservation: (id, body) =>
+    request(`/api/admin/reservations/${id}`, { method: 'PATCH', body }),
+  adminDeleteReservation: (id) =>
+    request(`/api/admin/reservations/${id}`, { method: 'DELETE' }),
 }

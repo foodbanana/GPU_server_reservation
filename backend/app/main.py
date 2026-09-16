@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from app.database import Base, SessionLocal, engine
 from app.models import Gpu, Reservation, User  # noqa: F401  (테이블 등록에 필요)
-from app.routers import auth, gpus, reservations
+from app.routers import admin, auth, gpus, reservations
 from app.seed import seed_gpus
 
 
@@ -31,6 +31,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(gpus.router)
 app.include_router(reservations.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health", tags=["기타"])

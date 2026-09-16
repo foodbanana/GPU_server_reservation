@@ -94,3 +94,31 @@ class ReservationOut(BaseModel):
     def _with_kst_offset(self, value: datetime) -> datetime:
         # DB에는 시간대 없이 저장되어 있으므로 응답에서 +09:00 을 붙여 준다.
         return timeutil.as_aware(value)
+
+
+# ---------- 관리자 (Phase 4) ----------
+class ReservationTimeUpdate(BaseModel):
+    """관리자 수정 요청. 시작·종료 시각만 바꿀 수 있다(PLAN 확정사항).
+
+    GPU와 예약자는 바꿀 수 없으므로 아예 받지 않는다.
+    """
+
+    start_at: datetime
+    end_at: datetime
+
+
+class AdminReservationOut(ReservationOut):
+    """관리자 목록용. 누구 예약인지 구분할 수 있게 이메일을 더 준다."""
+
+    user_email: str
+
+
+class AdminUpdateResult(BaseModel):
+    """관리자 수정 결과.
+
+    warnings 에는 관리자가 무시하고 저장한 규칙 설명이 담긴다.
+    (예: "단주기 예약 시간 제한(1~48시간)을 무시하고 저장했습니다.")
+    """
+
+    reservation: AdminReservationOut
+    warnings: list[str] = []
