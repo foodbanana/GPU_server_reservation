@@ -1,8 +1,11 @@
 # 연구실 GPU 예약 시스템
 
 연구실 GPU 서버 3대(GPU 12장)를 겹치지 않게 예약하고, 2주치 예약 현황을 시간표로 보는 웹 서비스.
+예약 시간 길이·기간 제한은 없다(연구실에서 협의해 사용). 시간표의 **이전/다음 2주** 버튼으로 더 먼 미래도 볼 수 있다.
 
-- 접속 주소: **http://143.248.247.93:8000** (이 데스크탑의 현재 IP. 바뀌면 아래 [IP 확인](#부록-1-내-데스크탑-ip-확인) 참고)
+- 접속 주소: **http://143.248.247.93:9080** (이 데스크탑의 현재 IP. 바뀌면 아래 [IP 확인](#부록-1-내-데스크탑-ip-확인) 참고)
+  - 포트가 예전에는 8000 이었다. 이 컴퓨터에서 **강화학습·VLA 추론 서버가 8000번대를 쓸 수 있어서**
+    충돌을 피하려고 **9080** 으로 옮겼다. (개발용 백엔드도 8001 → **9081**)
 - PC와 휴대폰 브라우저에서 모두 쓸 수 있다. (학교 내부망 안에서만)
 - 데스크탑을 껐다 켜도 자동으로 다시 시작된다.
 
@@ -38,11 +41,11 @@
 | | **운영 (실제 서비스)** | **개발 (코드 고칠 때)** |
 |---|---|---|
 | 누가 켜나 | systemd 가 알아서 (항상 켜져 있음) | 내가 터미널에서 직접 |
-| 포트 | **8000** | 백엔드 **8001** + 화면 **5173** |
+| 포트 | **9080** | 백엔드 **9081** + 화면 **5173** |
 | DB 파일 | `data/gpu.db` ← **진짜 데이터** | `backend/dev/dev.db` (연습용) |
 | 설정 파일 | `backend/config.yaml` | `backend/config.dev.yaml` |
 | 화면 | FastAPI 가 빌드 결과를 같이 내보냄 | vite 가 따로 내보냄 (고치면 바로 반영) |
-| 접속 주소 | http://143.248.247.93:8000 | http://localhost:5173 |
+| 접속 주소 | http://143.248.247.93:9080 | http://localhost:5173 |
 
 **핵심:** 개발용 명령은 `data/gpu.db` 를 절대 건드리지 않는다. 개발하려고 운영 서버를 끌 필요도 없다.
 둘은 포트도 DB도 다르므로 **동시에 켜 놔도 된다.**
@@ -152,13 +155,13 @@ PYTHONPATH= venv/bin/python scripts/create_admin.py
 
 ### 3-1. 미리 확인할 것
 
-이미 8000 포트로 직접 켜 둔 서버(`uvicorn ...`)가 있으면 **먼저 그 터미널에서 `Ctrl+C` 로 끈다.**
+이미 9080 포트로 직접 켜 둔 서버(`uvicorn ...`)가 있으면 **먼저 그 터미널에서 `Ctrl+C` 로 끈다.**
 포트는 프로그램 하나만 쓸 수 있어서, 안 끄면 서비스가 "Address already in use" 오류로 죽는다.
 
-지금 8000 포트를 누가 쓰고 있는지 확인:
+지금 9080 포트를 누가 쓰고 있는지 확인:
 
 ```bash
-ss -tlnp | grep 8000      # 아무것도 안 나오면 비어 있는 것
+ss -tlnp | grep 9080      # 아무것도 안 나오면 비어 있는 것
 ```
 
 ### 3-2. 등록 (사용자가 직접 실행)
@@ -181,10 +184,10 @@ systemctl status gpu-reserve
 초록색 `active (running)` 이 보이면 성공이다. (`q` 를 누르면 빠져나온다)
 
 ```bash
-curl http://localhost:8000/api/health     # {"status":"ok"} 가 나오면 정상
+curl http://localhost:9080/api/health     # {"status":"ok"} 가 나오면 정상
 ```
 
-이제 브라우저에서 **http://143.248.247.93:8000** 으로 들어가면 화면이 보인다.
+이제 브라우저에서 **http://143.248.247.93:9080** 으로 들어가면 화면이 보인다.
 휴대폰도 같은 와이파이(학교 내부망)에서 같은 주소로 들어가면 된다.
 
 ### 3-4. 재부팅 후에도 되는지 확인 (한 번은 해 볼 것)
@@ -193,7 +196,7 @@ curl http://localhost:8000/api/health     # {"status":"ok"} 가 나오면 정상
 sudo reboot
 ```
 
-다시 켜진 뒤, 아무 명령도 하지 말고 휴대폰에서 바로 http://143.248.247.93:8000 에 들어가 본다.
+다시 켜진 뒤, 아무 명령도 하지 말고 휴대폰에서 바로 http://143.248.247.93:9080 에 들어가 본다.
 화면이 보이고 예약이 되면 배포 완료다.
 
 ---
@@ -268,7 +271,7 @@ sudo systemctl restart gpu-reserve
 
 # 6) 확인
 systemctl status gpu-reserve
-curl http://localhost:8000/api/health
+curl http://localhost:9080/api/health
 ```
 
 **어디까지 해야 하나 (헷갈릴 때):**
@@ -289,7 +292,7 @@ curl http://localhost:8000/api/health
 ## 7. 설정(config.yaml)을 바꿨을 때
 
 `backend/config.yaml` 은 서버가 **켜질 때 한 번만** 읽는다.
-그래서 가입 코드, 예약 규칙(최소/최대 시간), GPU 모델 이름 등을 바꿨으면 **반드시 재시작해야 반영된다.**
+그래서 가입 코드, 예약 규칙(`slot_minutes`, `timeline_days`), GPU 모델 이름 등을 바꿨으면 **반드시 재시작해야 반영된다.**
 
 ```bash
 sudo systemctl restart gpu-reserve
@@ -453,20 +456,20 @@ sudo ufw status
 
 **결과에 따라:**
 
-- **`Status: inactive` 라고 나오면** → 방화벽이 꺼져 있다. 아무것도 안 해도 8000 포트로 접속된다.
+- **`Status: inactive` 라고 나오면** → 방화벽이 꺼져 있다. 아무것도 안 해도 9080 포트로 접속된다.
   (현재 이 컴퓨터가 이 상태다. 학교 내부망이라 이대로 써도 된다)
 
-- **`Status: active` 라고 나오면** → 8000 포트를 열어 줘야 한다:
+- **`Status: active` 라고 나오면** → 9080 포트를 열어 줘야 한다:
   ```bash
-  sudo ufw allow 8000/tcp
-  sudo ufw status        # 8000/tcp ALLOW 가 보이면 성공
+  sudo ufw allow 9080/tcp
+  sudo ufw status        # 9080/tcp ALLOW 가 보이면 성공
   ```
 
 **방화벽을 새로 켜고 싶다면** 반드시 SSH 포트를 먼저 열고 켠다. 안 그러면 원격 접속이 끊긴다:
 
 ```bash
 sudo ufw allow 22/tcp        # SSH 로 원격 접속을 쓴다면 반드시 먼저
-sudo ufw allow 8000/tcp
+sudo ufw allow 9080/tcp
 sudo ufw enable
 ```
 
@@ -531,7 +534,7 @@ systemctl status gpu-reserve
 #    active (running) 이 아니면:  sudo systemctl restart gpu-reserve
 
 # 2) 이 컴퓨터 안에서는 되나?
-curl http://localhost:8000/api/health
+curl http://localhost:9080/api/health
 #    {"status":"ok"} 가 나오면 서버는 정상. 네트워크 문제다.
 
 # 3) IP 가 바뀌지 않았나?  (제일 흔한 원인)
@@ -553,7 +556,7 @@ journalctl -u gpu-reserve -n 50 --no-pager
 
 | 로그에 보이는 말 | 뜻 | 해결 |
 |---|---|---|
-| `Address already in use` | 8000 포트를 다른 프로그램이 쓰고 있다 | `ss -tlnp \| grep 8000` 으로 찾아서 그 터미널에서 Ctrl+C |
+| `Address already in use` | 9080 포트를 다른 프로그램이 쓰고 있다 | `ss -tlnp \| grep 9080` 으로 찾아서 그 터미널에서 Ctrl+C |
 | `설정 파일이 없습니다` | `backend/config.yaml` 이 없다 | [2-3](#2-3-설정-파일-만들기) 다시 하기 |
 | `app.invite_code 값이 비어 있습니다` | 설정 파일에 값을 안 채웠다 | `config.yaml` 에 가입 코드·비밀키 채우고 재시작 |
 | `ModuleNotFoundError` | 라이브러리가 없다 | `cd backend && PYTHONPATH= venv/bin/pip install -r requirements.txt` 후 재시작 |
@@ -585,7 +588,7 @@ PYTHONPATH= venv/bin/python scripts/reset_password.py 그사람이메일@example
 
 ## 14. 개발할 때 (코드 고칠 때)
 
-**운영 서버(8000)는 켜 둔 채로** 개발한다. 끌 필요 없다.
+**운영 서버(9080)는 켜 둔 채로** 개발한다. 끌 필요 없다.
 
 ### 처음 한 번만
 
@@ -599,12 +602,12 @@ PYTHONPATH= venv/bin/python scripts/init_dev.py
 
 ### 개발 중에는 터미널 2개
 
-**터미널 1 — 개발용 백엔드 (포트 8001, 개발용 DB)**
+**터미널 1 — 개발용 백엔드 (포트 9081, 개발용 DB)**
 
 ```bash
 cd ~/GPU_server_reservation_ws/backend
 GPU_RESERVE_CONFIG=config.dev.yaml PYTHONPATH= \
-  venv/bin/python -m uvicorn app.main:app --reload --port 8001
+  venv/bin/python -m uvicorn app.main:app --reload --port 9081
 ```
 
 **터미널 2 — 화면 (포트 5173)**
@@ -617,7 +620,7 @@ npm run dev
 그다음 브라우저에서 **http://localhost:5173** 접속.
 
 - `--reload` 는 코드를 저장할 때마다 서버를 알아서 다시 켜 준다. **개발에서만** 쓴다.
-- 화면에서 부르는 `/api/...` 요청은 vite 가 8001 번으로 넘겨준다 (`frontend/vite.config.js` 의 proxy).
+- 화면에서 부르는 `/api/...` 요청은 vite 가 9081 번으로 넘겨준다 (`frontend/vite.config.js` 의 proxy).
 - 개발용 DB를 비우고 싶으면: `rm -f ~/GPU_server_reservation_ws/backend/dev/dev.db*`
   (운영 DB `data/gpu.db` 와는 전혀 다른 파일이다)
 
@@ -642,7 +645,7 @@ PYTHONPATH= venv/bin/python -m pytest
 ip -4 addr show scope global | grep inet
 ```
 
-`inet 143.248.247.93/24` 처럼 나오는 숫자가 IP다. 접속 주소는 `http://그숫자:8000`.
+`inet 143.248.247.93/24` 처럼 나오는 숫자가 IP다. 접속 주소는 `http://그숫자:9080`.
 
 IP 가 자꾸 바뀌어서 불편하면 연구실/학과 전산 담당자에게 **고정 IP** 를 요청하는 것이 가장 깔끔하다.
 

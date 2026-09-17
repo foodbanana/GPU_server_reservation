@@ -83,8 +83,11 @@ export const api = {
   me: () => request('/api/auth/me'),
   config: () => request('/api/config', { auth: false }),
   gpus: () => request('/api/gpus'),
+  // end 를 주지 않으면 start 이후의 예약을 기간 제한 없이 모두 받는다
   gpuReservations: (gpuId, start, end) =>
-    request(`/api/gpus/${gpuId}/reservations`, { params: { start, end } }),
+    request(`/api/gpus/${gpuId}/reservations`, {
+      params: end ? { start, end } : { start },
+    }),
   // 타임라인 화면용: 기간과 겹치는 모든 예약 (예약자 이름 포함)
   reservations: (start, end) => request('/api/reservations', { params: { start, end } }),
   createReservation: (body) => request('/api/reservations', { method: 'POST', body }),
@@ -103,4 +106,6 @@ export const api = {
     request(`/api/admin/reservations/${id}`, { method: 'PATCH', body }),
   adminDeleteReservation: (id) =>
     request(`/api/admin/reservations/${id}`, { method: 'DELETE' }),
+  // 가입자 목록 (보기 전용). 비밀번호 해시는 서버가 아예 내려주지 않는다.
+  adminUsers: () => request('/api/admin/users'),
 }

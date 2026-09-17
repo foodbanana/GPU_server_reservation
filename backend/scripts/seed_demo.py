@@ -93,7 +93,7 @@ def 안전검사(db_path: Path) -> None:
     ("short", 4, "김민준", 6, 2, "active"),
     ("short", 4, "이서연", 12, 3, "active"),
     ("short", 4, "박도윤", 60, 6, "active"),
-    ("short", 5, "최지우", 0, 48, "active"),      # 지금 시작, 단주기 최대 길이
+    ("short", 5, "최지우", 0, 48, "active"),      # 지금 시작, 48시간짜리
 
     # --- 장주기 GPU 6장 ---
     ("long", 0, "정하윤", -48, 168, "active"),    # 사용 중인 일주일짜리
@@ -198,9 +198,9 @@ def 안내출력(config_path: Path, db_path: Path, 기준: datetime, 개수: int
     print(f"  기준 시각 : {timeutil_format(기준)}")
     print(f"  예약 {개수}건 (취소된 예약 1건 포함 — 타임라인에는 보이면 안 됩니다)")
     print()
-    print("이 데이터로 화면을 보려면 backend 폴더에서 (포트 8001 — 8000은 운영 서버가 쓴다):")
+    print("이 데이터로 화면을 보려면 backend 폴더에서 (포트 9081 — 9080은 운영 서버가 쓴다):")
     print(f'  GPU_RESERVE_CONFIG={rel_config} PYTHONPATH= \\')
-    print("    venv/bin/python -m uvicorn app.main:app --reload --port 8001")
+    print("    venv/bin/python -m uvicorn app.main:app --reload --port 9081")
     print()
     print("그다음 다른 터미널에서 frontend 의 `npm run dev` 를 켜고 http://localhost:5173 접속.")
     print("로그인 정보:")

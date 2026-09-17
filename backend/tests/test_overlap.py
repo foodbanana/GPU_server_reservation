@@ -222,6 +222,22 @@ def test_특정_GPU의_예약된_시간대_조회(client, headers, short_gpu, ex
     assert 목록[0]["end_at"] == iso(datetime(2026, 1, 6, 14, 0))
 
 
+def test_GPU_예약_조회는_end_를_생략하면_앞으로_전부_돌려준다(
+    client, headers, short_gpu, clock, existing
+):
+    """예약 가능 기간 제한이 없어졌으므로, 예약 신청 화면은 기간 제한 없이 조회한다."""
+    먼미래 = create_reservation(client, headers, short_gpu, clock.hour(24 * 90), clock.hour(24 * 90 + 5))
+    assert 먼미래.status_code == 201, 먼미래.text
+
+    response = client.get(
+        f"/api/gpus/{short_gpu}/reservations",
+        headers=headers,
+        params={"start": iso(datetime(2026, 1, 5, 0, 0))},
+    )
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == [existing["id"], 먼미래.json()["id"]]
+
+
 # ---------- 취소 / 조기 종료 규칙 ----------
 
 def test_이미_시작된_예약은_취소할_수_없다(client, headers, short_gpu, clock):

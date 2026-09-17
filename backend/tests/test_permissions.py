@@ -99,6 +99,13 @@ def test_일반_사용자는_관리자_목록을_볼_수_없다(client, 남):
     assert response.status_code == 403
 
 
+def test_일반_사용자는_가입자_목록을_볼_수_없다(client, 남):
+    """가입자 목록은 관리자 전용이다. 주소를 직접 불러도 403."""
+    response = client.get("/api/admin/users", headers=남)
+    assert response.status_code == 403
+    assert "관리자" in response.json()["detail"]
+
+
 def test_일반_사용자는_관리자_삭제를_할_수_없다(client, 남, 미래예약):
     response = client.delete(f"/api/admin/reservations/{미래예약['id']}", headers=남)
     assert response.status_code == 403

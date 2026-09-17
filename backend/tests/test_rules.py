@@ -1,5 +1,10 @@
-"""예약 규칙 검사 테스트 (PLAN 5장 표의 1~5번).
+"""예약 규칙 검사 테스트 (PLAN 5장 표).
 
+남아 있는 규칙은 네 가지뿐이다.
+  1. 정시(분·초 0)  2. 종료 > 시작  3. 지난 시각 금지  4. 같은 GPU 겹침 금지(test_overlap.py)
+
+예약 길이 제한(단주기 최대·장주기 최소)과 '14일 이내 시작' 제한은 없앴으므로,
+아래에는 "이제는 막히지 않는다"를 확인하는 테스트도 함께 둔다.
 현재 시각은 모두 2026-01-05 14:20 으로 고정되어 있다(conftest.py 의 clock).
 """
 
@@ -76,77 +81,38 @@ def test_한_시간_전_시작은_거부된다(client, headers, short_gpu, clock
     assert "지난 시간은 예약할 수 없습니다" in response.json()["detail"]
 
 
-# ---------- 4. 14일 이내 검사 ----------
+# ---------- 없어진 제한들: 이제는 막히지 않아야 한다 ----------
+# 사람들끼리 협의해서 쓰기로 했으므로 길이·기간 제한을 모두 없앴다.
 
-def test_정확히_14일_뒤_시작은_허용된다(client, headers, short_gpu, clock):
-    start = clock.hour(24 * 14)
+def test_14일을_넘긴_시작도_예약할_수_있다(client, headers, short_gpu, clock):
+    start = clock.hour(24 * 60)  # 두 달 뒤
     response = create_reservation(client, headers, short_gpu, start, start + timedelta(hours=2))
     assert response.status_code == 201, response.text
+    assert response.json()["start_at"] == iso(start)
 
 
-def test_14일을_넘긴_시작은_거부된다(client, headers, short_gpu, clock):
-    start = clock.hour(24 * 14 + 1)
-    response = create_reservation(client, headers, short_gpu, start, start + timedelta(hours=2))
-    assert response.status_code == 400
-    assert "14일 이내" in response.json()["detail"]
-
-
-# ---------- 5. 단주기 / 장주기 시간 길이 규칙 ----------
-# 단주기: 최소 1시간, 최대 48시간
-
-@pytest.mark.parametrize("hours", [1, 24, 48])
-def test_단주기_허용_범위는_통과한다(client, headers, short_gpu, clock, hours):
+@pytest.mark.parametrize("hours", [1, 48, 100, 336, 1000])
+def test_단주기는_길이_제한_없이_예약된다(client, headers, short_gpu, clock, hours):
     start = clock.hour(1)
     response = create_reservation(client, headers, short_gpu, start, start + timedelta(hours=hours))
     assert response.status_code == 201, response.text
 
 
-def test_단주기_49시간은_거부된다(client, headers, short_gpu, clock):
-    start = clock.hour(1)
-    response = create_reservation(client, headers, short_gpu, start, start + timedelta(hours=49))
-    assert response.status_code == 400
-    detail = response.json()["detail"]
-    assert "단주기" in detail and "48시간" in detail
-
-
-# 장주기: 최소 48시간, 최대 336시간(14일)
-
-@pytest.mark.parametrize("hours", [48, 200, 336])
-def test_장주기_허용_범위는_통과한다(client, headers, long_gpu, clock, hours):
+@pytest.mark.parametrize("hours", [1, 2, 47, 48, 500])
+def test_장주기도_길이_제한_없이_예약된다(client, headers, long_gpu, clock, hours):
+    """예전에는 장주기에 48시간 미만을 못 넣었지만 이제는 1시간도 된다."""
     start = clock.hour(1)
     response = create_reservation(client, headers, long_gpu, start, start + timedelta(hours=hours))
     assert response.status_code == 201, response.text
 
 
-@pytest.mark.parametrize("hours", [1, 24, 47])
-def test_장주기_48시간_미만은_거부된다(client, headers, long_gpu, clock, hours):
-    start = clock.hour(1)
-    response = create_reservation(client, headers, long_gpu, start, start + timedelta(hours=hours))
-    assert response.status_code == 400
-    detail = response.json()["detail"]
-    assert "장주기" in detail and "48시간" in detail
-
-
-def test_48시간은_단주기_장주기_양쪽에서_모두_허용된다(client, headers, short_gpu, long_gpu, clock):
-    """단주기 최대(48h)와 장주기 최소(48h)가 맞닿아 있으므로 둘 다 통과해야 한다."""
-    start = clock.hour(1)
-    end = start + timedelta(hours=48)
-    assert create_reservation(client, headers, short_gpu, start, end).status_code == 201
-    assert create_reservation(client, headers, long_gpu, start, end).status_code == 201
-
-
-def test_장주기_337시간은_거부된다(client, headers, long_gpu, clock):
-    start = clock.hour(1)
-    response = create_reservation(client, headers, long_gpu, start, start + timedelta(hours=337))
-    assert response.status_code == 400
-    assert "336시간" in response.json()["detail"]
-
-
-def test_단주기_규칙이_장주기_GPU에_적용되지_않는다(client, headers, long_gpu, clock):
-    """단주기라면 통과했을 2시간짜리가 장주기 GPU에서는 거부되어야 한다."""
-    start = clock.hour(1)
-    response = create_reservation(client, headers, long_gpu, start, start + timedelta(hours=2))
-    assert response.status_code == 400
+def test_단주기_장주기_구분은_그대로_남아_있다(client, headers):
+    """규칙은 같아졌지만 분류(버튼·타임라인 그룹용)는 계속 구분된다."""
+    gpus = client.get("/api/gpus", headers=headers).json()
+    분류 = {g["category"] for g in gpus}
+    assert 분류 == {"short", "long"}
+    이름표 = {g["category"]: g["category_label"] for g in gpus}
+    assert 이름표 == {"short": "단주기", "long": "장주기"}
 
 
 # ---------- 기타 ----------
@@ -162,9 +128,12 @@ def test_설정값_조회(client):
     assert response.status_code == 200
     body = response.json()
     assert body["timezone"] == "Asia/Seoul"
-    assert body["short"] == {"min_hours": 1, "max_hours": 48}
-    assert body["long"] == {"min_hours": 48, "max_hours": 336}
-    assert body["booking_horizon_days"] == 14
+    assert body["slot_minutes"] == 60
+    # 타임라인이 한 번에 보여 주는 일수. 예약 가능 기간 제한이 아니다.
+    assert body["timeline_days"] == 14
+    # 길이 제한 설정은 응답에서 사라졌다
+    assert "short" not in body and "long" not in body
+    assert "booking_horizon_days" not in body
 
 
 def test_GPU는_단주기_6개_장주기_6개(client, headers):

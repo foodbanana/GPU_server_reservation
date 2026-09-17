@@ -23,9 +23,16 @@
 - 새 라이브러리를 추가하면 requirements.txt / package.json에 반영한다.
 - data/ 폴더의 DB 파일은 절대 직접 삭제하거나 덮어쓰지 않는다. 테스트나 확인에는 임시 DB 경로를 사용하고, 초기화가 꼭 필요하면 먼저 사용자에게 묻는다.
 - 사용자가 직접 실행 중인 서버 프로세스를 종료하지 않는다. 재시작이 필요하면 사용자에게 요청한다.
+- **`frontend/dist` 를 함부로 덮어쓰지 않는다.**
+  - 운영 서버가 `frontend/dist` 를 **그대로 서빙**한다. 개발 중에 `npm run build` 를 돌리면
+    운영 화면이 즉시 바뀌어, 아직 반영되지 않은 백엔드와 짝이 안 맞아 오류가 난다.
+  - 개발 중 화면 확인은 **vite 개발 서버(5173)** 로만 한다.
+  - 빌드가 꼭 필요하면 **먼저 사용자에게 묻고** 허락을 받는다. (배포할 때만 빌드한다)
 - **운영과 개발을 섞지 않는다 (Phase 5 이후).**
-  - 운영: systemd 서비스 `gpu-reserve`, 포트 **8000**, 설정 `config.yaml`, DB `data/gpu.db`.
-  - 개발·확인: 포트 **8001**(또는 비어 있는 다른 포트), 설정 `config.dev.yaml`, DB `backend/dev/dev.db`.
+  - 운영: systemd 서비스 `gpu-reserve`, 포트 **9080**, 설정 `config.yaml`, DB `data/gpu.db`.
+  - 개발·확인: 포트 **9081**(또는 비어 있는 다른 포트), 설정 `config.dev.yaml`, DB `backend/dev/dev.db`.
+  - **8000번대 포트는 쓰지 않는다.** 이 컴퓨터에서 강화학습·VLA 추론 서버가 8000번대를 쓸 수 있어서
+    충돌을 피하려고 9080/9081 로 옮겼다. (예전 포트는 8000/8001 이었다)
   - 개발용 명령에는 항상 `GPU_RESERVE_CONFIG=` 로 개발 설정을 지정한다. 안 붙이면 운영 DB를 쓰게 된다.
   - 운영 서비스를 `systemctl stop/restart` 하지 않는다. 필요하면 사용자에게 명령을 알려준다.
 
@@ -35,14 +42,14 @@
 > pytest가 ROS 플러그인을 잘못 읽고 오류를 낸다.
 > 그래서 아래 파이썬 명령에는 `PYTHONPATH=` 를 붙여 ROS 경로를 잠깐 비운다.
 >
-> **주의 2:** Phase 5부터 **운영 서버(포트 8000)가 systemd 로 항상 돌고 있다.**
-> 개발할 때는 운영을 끄지 말고 **포트 8001 + 개발용 DB** 로 따로 띄운다.
+> **주의 2:** Phase 5부터 **운영 서버(포트 9080)가 systemd 로 항상 돌고 있다.**
+> 개발할 때는 운영을 끄지 말고 **포트 9081 + 개발용 DB** 로 따로 띄운다.
 > 초보자용 상세 안내는 `README.md` 에 있다.
 
 | | 운영 | 개발 |
 |---|---|---|
 | 실행 주체 | systemd (`gpu-reserve`) | 터미널에서 직접 |
-| 포트 | 8000 | 백엔드 8001 / 화면 5173 |
+| 포트 | 9080 | 백엔드 9081 / 화면 5173 |
 | 설정 | `backend/config.yaml` | `backend/config.dev.yaml` |
 | DB | `data/gpu.db` (진짜 데이터) | `backend/dev/dev.db` |
 | 화면 | FastAPI 가 `frontend/dist` 서빙 | vite (`npm run dev`) |
@@ -70,14 +77,14 @@ npm install
 
 ## 개발 (코드 고칠 때)
 
-운영 서버(8000)는 **켜 둔 채로** 작업한다. 터미널 2개를 띄운다.
+운영 서버(9080)는 **켜 둔 채로** 작업한다. 터미널 2개를 띄운다.
 
-**터미널 1 — 개발용 백엔드 (8001, 개발용 DB)**
+**터미널 1 — 개발용 백엔드 (9081, 개발용 DB)**
 ```bash
 cd backend
 GPU_RESERVE_CONFIG=config.dev.yaml PYTHONPATH= \
-  venv/bin/python -m uvicorn app.main:app --reload --port 8001
-# API 직접 눌러보기: http://localhost:8001/docs
+  venv/bin/python -m uvicorn app.main:app --reload --port 9081
+# API 직접 눌러보기: http://localhost:9081/docs
 ```
 
 **터미널 2 — 화면 (5173)**
@@ -86,7 +93,7 @@ cd frontend
 npm run dev        # http://localhost:5173
 ```
 
-- 화면의 `/api/...` 요청은 vite 가 8001 로 넘겨준다 (`frontend/vite.config.js` 의 proxy).
+- 화면의 `/api/...` 요청은 vite 가 9081 로 넘겨준다 (`frontend/vite.config.js` 의 proxy).
 - 개발용 가입 코드는 `DEV-CODE-1234` (`config.dev.yaml` 에 있음).
 - 개발용 DB 비우기: `rm -f backend/dev/dev.db*` (운영 DB와 다른 파일이라 안전하다)
 - **`GPU_RESERVE_CONFIG=config.dev.yaml` 을 빠뜨리면 운영 DB(`data/gpu.db`)를 쓰게 된다. 항상 붙인다.**
@@ -106,7 +113,7 @@ PYTHONPATH= venv/bin/python -m pytest tests/test_static.py    # 빌드 화면 �
 ### 휴대폰에서 확인할 때
 ```bash
 ip -4 addr show scope global | grep inet   # 데스크탑 IP 확인
-# 운영 화면: http://<데스크탑IP>:8000
+# 운영 화면: http://<데스크탑IP>:9080
 # 개발 화면: http://<데스크탑IP>:5173  (npm run dev 는 기본으로 외부 접속 허용)
 ```
 휴대폰이 없어도 PC 크롬에서 **F12 → Ctrl+Shift+M** 을 누르면 휴대폰 화면 크기로 볼 수 있다.
@@ -131,8 +138,8 @@ sudo systemctl stop gpu-reserve           # 중지
 ### 운영 서버를 직접 띄워 볼 때 (서비스 등록 전 확인용)
 ```bash
 cd backend
-PYTHONPATH= venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-# --reload 를 쓰지 않는다. 화면+API 가 http://<데스크탑IP>:8000 하나로 나온다.
+PYTHONPATH= venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 9080
+# --reload 를 쓰지 않는다. 화면+API 가 http://<데스크탑IP>:9080 하나로 나온다.
 # 이미 서비스가 켜져 있으면 포트 충돌이 나므로 먼저 서비스를 중지해야 한다.
 ```
 
@@ -141,7 +148,7 @@ PYTHONPATH= venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd ~/GPU_server_reservation_ws
 ./deploy/backup_db.sh                                    # 0) 백업
 git pull                                                 # 1) 새 코드
-(cd frontend && npm install && npm run build)            # 2) 화면 고쳤으면
+(cd frontend && npm install && npm run build)            # 2) 화면 고쳤으면 (배포할 때만 빌드한다)
 (cd backend && PYTHONPATH= venv/bin/pip install -r requirements.txt)   # 3) 라이브러리 추가했으면
 (cd backend && PYTHONPATH= venv/bin/python -m pytest)    # 4) 테스트
 sudo systemctl restart gpu-reserve                       # 5) 재시작
@@ -149,6 +156,7 @@ sudo systemctl restart gpu-reserve                       # 5) 재시작
 
 - **`config.yaml` 을 바꾸면 반드시 재시작해야 반영된다.** (설정은 켤 때 한 번만 읽는다)
 - `frontend/` 만 고친 경우 다시 빌드하면 재시작 없이도 반영된다. (브라우저는 Ctrl+Shift+R)
+  - 뒤집어 말하면 **개발 중에 빌드하면 운영 화면이 곧바로 바뀐다.** 그래서 개발 중에는 빌드하지 않는다.
 
 ### DB 백업 / 복구
 ```bash
@@ -192,9 +200,9 @@ PYTHONPATH= venv/bin/python scripts/reset_password.py someone@example.com    # �
 cd backend
 PYTHONPATH= venv/bin/python scripts/seed_demo.py      # 데모 DB + 예약 16건 만들기
 
-# 데모 설정으로 서버 켜기 (포트 8001 — 8000은 운영이 쓴다)
+# 데모 설정으로 서버 켜기 (포트 9081 — 9080은 운영이 쓴다)
 GPU_RESERVE_CONFIG=demo/config.yaml PYTHONPATH= \
-  venv/bin/python -m uvicorn app.main:app --reload --port 8001
+  venv/bin/python -m uvicorn app.main:app --reload --port 9081
 ```
 
 다른 터미널에서 `cd frontend && npm run dev` → http://localhost:5173

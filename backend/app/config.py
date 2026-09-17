@@ -17,22 +17,19 @@ DEFAULT_CONFIG_PATH = BACKEND_DIR / "config.yaml"
 
 
 @dataclass(frozen=True)
-class CategoryRule:
-    """단주기/장주기 각각의 최소·최대 예약 시간(시간 단위)."""
-
-    min_hours: int
-    max_hours: int
-
-
-@dataclass(frozen=True)
 class Rules:
-    slot_minutes: int
-    booking_horizon_days: int
-    short: CategoryRule
-    long: CategoryRule
+    """예약 규칙.
 
-    def for_category(self, category: str) -> CategoryRule:
-        return self.short if category == "short" else self.long
+    예약 길이 제한(단주기 최대·장주기 최소 등)과 '14일 이내 시작' 제한은
+    연구실에서 협의해 쓰기로 하여 없앴다. 남은 규칙은 코드에 고정된
+    '1시간 단위 / 종료가 시작보다 뒤 / 지난 시각 금지 / 같은 GPU 겹침 금지' 뿐이다.
+
+    timeline_days 는 예약 제한이 아니라 **타임라인 화면이 한 번에 보여 주는 일수**다.
+    (화면에서 '이전/다음' 버튼으로 이 일수만큼 앞뒤로 옮겨 본다)
+    """
+
+    slot_minutes: int
+    timeline_days: int
 
 
 @dataclass(frozen=True)
@@ -90,17 +87,10 @@ def load_config(path: Path | None = None) -> Config:
     db_path = resolve(str(app_raw.get("database_path", "../data/gpu.db")))
 
     # static_dir: Vue 를 빌드한 결과 폴더(frontend/dist). 이걸 FastAPI 가 함께 서빙해서
-    # 포트 하나(8000)로 화면과 API를 모두 제공한다(Phase 5, SPEC 10장).
+    # 포트 하나(9080)로 화면과 API를 모두 제공한다(Phase 5, SPEC 10장).
     # 빈 값("" 또는 null)으로 두면 정적 파일을 서빙하지 않는다(개발용 설정에서 사용).
     static_raw = app_raw.get("static_dir", "../frontend/dist")
     static_dir = resolve(str(static_raw)) if static_raw else None
-
-    def category_rule(name: str, default_min: int, default_max: int) -> CategoryRule:
-        node = rules_raw.get(name, {}) or {}
-        return CategoryRule(
-            min_hours=int(node.get("min_hours", default_min)),
-            max_hours=int(node.get("max_hours", default_max)),
-        )
 
     gpus = tuple(
         GpuSpec(
@@ -126,9 +116,7 @@ def load_config(path: Path | None = None) -> Config:
         static_dir=static_dir,
         rules=Rules(
             slot_minutes=int(rules_raw.get("slot_minutes", 60)),
-            booking_horizon_days=int(rules_raw.get("booking_horizon_days", 14)),
-            short=category_rule("short", 1, 48),
-            long=category_rule("long", 48, 336),
+            timeline_days=int(rules_raw.get("timeline_days", 14)),
         ),
         gpus=gpus,
         google_enabled=bool((raw.get("google", {}) or {}).get("enabled", False)),

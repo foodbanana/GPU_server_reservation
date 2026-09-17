@@ -10,6 +10,10 @@ const route = useRoute()
 // 타임라인처럼 넓은 화면은 본문 폭 제한을 푼다 (router/index.js 의 meta.wide)
 const 넓은화면 = computed(() => Boolean(route.meta.wide))
 
+// 로그인·회원가입 화면(meta.public)은 로고가 들어간 머리글을 따로 보여 주므로
+// 위쪽 막대를 감춘다.
+const 공개화면 = computed(() => Boolean(route.meta.public))
+
 // 관리자 메뉴는 관리자에게만 보인다 (주소를 직접 쳐도 router 와 서버가 막는다)
 const 관리자 = computed(() => Boolean(auth.user?.is_admin))
 
@@ -23,7 +27,7 @@ function 로그아웃() {
 </script>
 
 <template>
-  <header class="topbar">
+  <header v-if="!공개화면" class="topbar">
     <RouterLink class="brand" :to="{ name: 'timeline' }">연구실 GPU 예약</RouterLink>
     <div v-if="auth.isLoggedIn" class="topbar-right">
       <span class="who">{{ auth.user?.name }} 님</span>

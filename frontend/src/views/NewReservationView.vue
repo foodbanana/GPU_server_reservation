@@ -2,6 +2,10 @@
 // 예약 신청 화면.
 // - 주소에 gpuId 가 없으면: GPU 버튼 12개를 보여준다.
 // - gpuId 가 있으면: 그 GPU의 시작·종료 날짜·시간을 고르는 폼을 보여준다.
+//
+// 예약 시간 길이 제한과 '14일 이내 시작' 제한은 없다 (연구실에서 협의해 쓴다).
+// 화면이 미리 걸러 주는 것은 '종료가 시작보다 뒤인가'와 '이미 잡힌 예약과 겹치는가' 두 가지뿐이고,
+// 진짜 판정은 언제나 서버가 한다.
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -16,7 +20,6 @@ const props = defineProps({
 const router = useRouter()
 
 const gpus = ref([])
-const 규칙 = ref(null)
 const 기존예약 = ref([])
 const 불러오는중 = ref(true)
 const 보내는중 = ref(false)
@@ -39,24 +42,13 @@ const 선택GPU = computed(() =>
   props.gpuId ? gpus.value.find((g) => g.id === Number(props.gpuId)) ?? null : null,
 )
 
-const 내규칙 = computed(() => {
-  if (!선택GPU.value || !규칙.value) return null
-  return 규칙.value[선택GPU.value.category]
-})
-
 const 예약길이 = computed(() => {
   if (!시작날짜.value || !종료날짜.value) return 0
   return diffHours(시작날짜.value, 시작시.value, 종료날짜.value, 종료시.value)
 })
 
-/** 오늘(한국 시간) — 날짜 선택 칸의 최소값 */
+/** 오늘(한국 시간) — 날짜 선택 칸의 최소값. 최대값은 두지 않는다 (기간 제한 없음) */
 const 오늘 = computed(() => kstParts().date)
-
-/** 예약 가능한 마지막 시작 날짜 */
-const 마지막날짜 = computed(() => {
-  const days = 규칙.value?.booking_horizon_days ?? 14
-  return addHours(오늘.value, 0, days * 24).date
-})
 
 // ---------- 불러오기 ----------
 
@@ -64,9 +56,7 @@ async function 초기화() {
   불러오는중.value = true
   오류.value = ''
   try {
-    const [설정, 목록] = await Promise.all([api.config(), api.gpus()])
-    규칙.value = 설정
-    gpus.value = 목록
+    gpus.value = await api.gpus()
   } catch (e) {
     오류.value = e.message
   } finally {
@@ -77,25 +67,22 @@ async function 초기화() {
 async function 기존예약불러오기() {
   기존예약.value = []
   if (!선택GPU.value) return
-  // 장주기 예약은 최대 14일이므로, 넉넉히 4주 범위를 조회한다.
-  const 시작 = toIso(오늘.value, 0)
-  const 끝 = toIso(addHours(오늘.value, 0, 28 * 24).date, 0)
+  // 끝 시각을 주지 않으면 서버가 '오늘 0시 이후의 예약 전부'를 준다 (기간 제한 없음).
   try {
-    기존예약.value = await api.gpuReservations(선택GPU.value.id, 시작, 끝)
+    기존예약.value = await api.gpuReservations(선택GPU.value.id, toIso(오늘.value, 0))
   } catch (e) {
     오류.value = e.message
   }
 }
 
-/** 시작·종료 기본값: 다음 정시부터, 그 분류의 최소 시간만큼 */
+/** 시작·종료 기본값: 다음 정시부터 1시간 */
 function 기본시각채우기() {
   const 지금 = kstParts()
   const 시작 = addHours(지금.date, 지금.hour, 1)
   시작날짜.value = 시작.date
   시작시.value = 시작.hour
 
-  const 최소 = 내규칙.value?.min_hours ?? 1
-  const 종료 = addHours(시작.date, 시작.hour, 최소)
+  const 종료 = addHours(시작.date, 시작.hour, 1)
   종료날짜.value = 종료.date
   종료시.value = 종료.hour
 }
@@ -104,7 +91,7 @@ function 기본시각채우기() {
 
 // GPU 를 고르거나 바꾸면 그 GPU의 예약 목록과 기본 시각을 다시 준비한다
 watch(
-  [선택GPU, 규칙],
+  선택GPU,
   () => {
     if (!선택GPU.value) return
     성공.value = ''
@@ -142,18 +129,21 @@ const 겹치는예약 = computed(() => {
 })
 
 const 미리보기경고 = computed(() => {
-  if (!내규칙.value || !시작날짜.value || !종료날짜.value) return ''
+  if (!시작날짜.value || !종료날짜.value) return ''
   if (예약길이.value <= 0) return '종료 시각은 시작 시각보다 뒤여야 합니다.'
-  if (예약길이.value < 내규칙.value.min_hours) {
-    return `${선택GPU.value.category_label} GPU는 최소 ${내규칙.value.min_hours}시간부터 예약할 수 있습니다. (지금 선택: ${예약길이.value}시간)`
-  }
-  if (예약길이.value > 내규칙.value.max_hours) {
-    return `${선택GPU.value.category_label} GPU는 최대 ${내규칙.value.max_hours}시간까지 예약할 수 있습니다. (지금 선택: ${예약길이.value}시간)`
-  }
   if (겹치는예약.value) {
     return `이미 예약된 시간과 겹칩니다. (${formatKst(겹치는예약.value.start_at)} ~ ${formatKst(겹치는예약.value.end_at)})`
   }
   return ''
+})
+
+/** '50시간 (2일 2시간)' 처럼 길게 잡은 예약을 알아보기 쉽게 */
+const 길이설명 = computed(() => {
+  const h = 예약길이.value
+  if (h < 24) return ''
+  const 일 = Math.floor(h / 24)
+  const 나머지 = h % 24
+  return 나머지 === 0 ? `(${일}일)` : `(${일}일 ${나머지}시간)`
 })
 
 // ---------- 보내기 ----------
@@ -192,7 +182,7 @@ function 목록으로() {
   <template v-else-if="!선택GPU">
     <h1>예약할 GPU를 고르세요</h1>
     <p v-if="오류" class="error-box">{{ 오류 }}</p>
-    <GpuButtonGrid :gpus="gpus" :rules="규칙" />
+    <GpuButtonGrid :gpus="gpus" />
   </template>
 
   <template v-else>
@@ -201,22 +191,15 @@ function 목록으로() {
     <div class="card">
       <h1>{{ 선택GPU.label }}</h1>
       <p class="hint">
-        {{ 선택GPU.category_label }} GPU · {{ 내규칙?.min_hours }}시간 ~
-        {{ 내규칙?.max_hours }}시간 · 지금부터
-        {{ 규칙?.booking_horizon_days }}일 이내 · 예약은 정시 단위입니다.
+        {{ 선택GPU.category_label }} GPU · 예약은 정시 단위입니다 ·
+        예약 길이와 기간 제한은 없습니다. 오래 쓸 때는 서로 협의해 주세요.
       </p>
 
       <form @submit.prevent="예약신청">
         <div class="field">
           <label>시작</label>
           <div class="datetime">
-            <input
-              v-model="시작날짜"
-              type="date"
-              :min="오늘"
-              :max="마지막날짜"
-              required
-            />
+            <input v-model="시작날짜" type="date" :min="오늘" required />
             <select v-model.number="시작시">
               <option v-for="h in HOURS" :key="h" :value="h">
                 {{ String(h).padStart(2, '0') }}:00
@@ -239,6 +222,7 @@ function 목록으로() {
 
         <p class="length">
           예약 길이: <strong>{{ 예약길이 }}시간</strong>
+          <span v-if="길이설명" class="days">{{ 길이설명 }}</span>
         </p>
 
         <p v-if="미리보기경고" class="warn-box">{{ 미리보기경고 }}</p>
@@ -253,7 +237,7 @@ function 목록으로() {
 
     <div class="card existing">
       <h2>이 GPU에 이미 잡혀 있는 예약</h2>
-      <p v-if="기존예약.length === 0" class="hint">앞으로 4주 안에 잡힌 예약이 없습니다.</p>
+      <p v-if="기존예약.length === 0" class="hint">앞으로 잡힌 예약이 없습니다.</p>
       <ul v-else>
         <li v-for="r in 기존예약" :key="r.id">
           <span class="time">{{ formatKst(r.start_at) }} ~ {{ formatKst(r.end_at) }}</span>
@@ -296,6 +280,12 @@ h2 {
 
 .length {
   margin: 0.75rem 0 0;
+}
+
+.days {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .warn-box {

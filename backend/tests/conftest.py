@@ -27,13 +27,7 @@ app:
 
 rules:
   slot_minutes: 60
-  booking_horizon_days: 14
-  short:
-    min_hours: 1
-    max_hours: 48
-  long:
-    min_hours: 48
-    max_hours: 336
+  timeline_days: 14
 
 gpus:
   - {{ server_no: 1, gpu_index: 0, model: "A6000",     category: short }}

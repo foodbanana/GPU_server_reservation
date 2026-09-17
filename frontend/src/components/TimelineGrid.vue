@@ -1,7 +1,9 @@
 <script setup>
 // 예약 현황 표 (SPEC 8장 2번).
 //
-// 가로: 오늘 0시부터 days 일(기본 14일) 동안을 1시간 = 1칸으로 그린다.
+// 가로: startDate 0시부터 days 일(기본 14일) 동안을 1시간 = 1칸으로 그린다.
+//       startDate 는 보통 오늘이지만, 화면의 '이전/다음' 버튼으로 다른 기간이 올 수도 있다.
+//       그래서 현재 시각이 표 밖(왼쪽이나 오른쪽)에 있는 경우도 처리해야 한다.
 // 세로: GPU 12행을 단주기 그룹 / 장주기 그룹으로 나눈다.
 //
 // 그리는 방법
@@ -22,6 +24,8 @@ const props = defineProps({
   reservations: { type: Array, required: true },
   now: { type: Date, required: true },
   days: { type: Number, default: 14 },
+  // 표의 왼쪽 끝 날짜 'YYYY-MM-DD'. 주지 않으면 오늘부터 그린다.
+  startDate: { type: String, default: '' },
 })
 
 const router = useRouter()
@@ -32,8 +36,11 @@ const 툴팁 = ref(null) // { x, y, gpu, block }
 
 // ---------- 시간 축 ----------
 
-/** 표의 왼쪽 끝 = 오늘 0시 (한국 시간) */
-const 시작날짜 = computed(() => kstParts(props.now).date)
+/** 표의 왼쪽 끝 날짜 (한국 시간). 기본값은 오늘. */
+const 시작날짜 = computed(() => props.startDate || kstParts(props.now).date)
+
+/** 오늘 날짜 — 날짜 머리글에 노란색으로 표시할 칸을 고를 때 쓴다 */
+const 오늘날짜 = computed(() => kstParts(props.now).date)
 const 시작시각 = computed(() => new Date(toIso(시작날짜.value, 0)).getTime())
 const 총시간 = computed(() => props.days * 24)
 const 끝시각 = computed(() => 시작시각.value + 총시간.value * 3600000)
@@ -45,13 +52,23 @@ const 트랙너비 = computed(() => `calc(var(--hour-w) * ${총시간.value})`)
 const 지금위치 = computed(() => (props.now.getTime() - 시작시각.value) / 3600000)
 
 /** 날짜 머리글: [{ date, label, 요일, 오늘인가 }] */
-const 날짜목록 = computed(() => {
-  const 오늘 = 시작날짜.value
-  return Array.from({ length: props.days }, (_, i) => {
-    const date = addHours(오늘, 0, i * 24).date
-    return { date, label: shortDate(date), weekday: weekdayKo(date), today: i === 0 }
-  })
-})
+const 날짜목록 = computed(() =>
+  Array.from({ length: props.days }, (_, i) => {
+    const date = addHours(시작날짜.value, 0, i * 24).date
+    return {
+      date,
+      label: shortDate(date),
+      weekday: weekdayKo(date),
+      today: date === 오늘날짜.value,
+    }
+  }),
+)
+
+/** 현재 시각이 지금 보고 있는 기간 안에 있는가 (세로선을 그릴지 판단) */
+const 지금이표안에 = computed(() => 지금위치.value >= 0 && 지금위치.value <= 총시간.value)
+
+/** 회색 '지난 시간' 덮개의 폭 (칸 수). 미래 기간을 보면 0, 과거 기간을 보면 표 전체 */
+const 지난폭 = computed(() => Math.min(Math.max(지금위치.value, 0), 총시간.value))
 
 /** 시간 머리글: 0,1,2,...,23,0,1,... (3시간마다만 숫자를 보여 준다) */
 const 시간목록 = computed(() =>
@@ -141,6 +158,11 @@ function css값(name, 기본값) {
 function 지금으로스크롤() {
   const el = 스크롤러.value
   if (!el) return
+  // 현재 시각이 표 밖이면(다른 기간을 보는 중) 표의 맨 왼쪽부터 보여 준다
+  if (!지금이표안에.value) {
+    el.scrollLeft = 0
+    return
+  }
   const 칸너비 = css값('--hour-w', 30)
   const 이름칸 = css값('--label-w', 138)
   // 현재 시각이 '시간 부분'의 왼쪽에서 1/4 지점에 오도록 (조금 전 상황도 같이 보이게).
@@ -161,6 +183,16 @@ watch(
     }
   },
   { immediate: true },
+)
+
+// '이전/다음 2주'로 기간을 옮기면 새 기간의 시작 부분부터 보여 준다
+watch(
+  () => props.startDate,
+  async () => {
+    툴팁닫기()
+    await nextTick()
+    지금으로스크롤()
+  },
 )
 
 onMounted(() => window.addEventListener('resize', 툴팁닫기))
@@ -246,16 +278,14 @@ defineExpose({ 지금으로스크롤 })
               </div>
 
               <!-- 지나간 시간 덮개 (회색) -->
-              <div
-                class="tl-past"
-                :style="{ width: `calc(var(--hour-w) * ${Math.max(지금위치, 0)})` }"
-              />
+              <div class="tl-past" :style="{ width: `calc(var(--hour-w) * ${지난폭})` }" />
             </div>
           </div>
         </template>
 
-        <!-- 현재 시각 세로선 -->
+        <!-- 현재 시각 세로선. 다른 기간을 보고 있으면 그리지 않는다. -->
         <div
+          v-if="지금이표안에"
           class="tl-nowline"
           :style="{ left: `calc(var(--label-w) + var(--hour-w) * ${지금위치})` }"
         >

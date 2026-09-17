@@ -56,19 +56,16 @@ class GpuOut(BaseModel):
     label: str
 
 
-class CategoryRuleOut(BaseModel):
-    min_hours: int
-    max_hours: int
-
-
 class ConfigOut(BaseModel):
-    """프론트엔드가 쓸 규칙값 (편의용 검사에 사용)."""
+    """프론트엔드가 쓸 설정값.
+
+    예약 길이 제한과 '14일 이내 시작' 제한이 없어졌으므로 규칙값은 slot_minutes 뿐이다.
+    timeline_days 는 예약 제한이 아니라 타임라인이 한 번에 보여 주는 일수다.
+    """
 
     timezone: str
     slot_minutes: int
-    booking_horizon_days: int
-    short: CategoryRuleOut
-    long: CategoryRuleOut
+    timeline_days: int
 
 
 # ---------- 예약 ----------
@@ -113,12 +110,21 @@ class AdminReservationOut(ReservationOut):
     user_email: str
 
 
-class AdminUpdateResult(BaseModel):
-    """관리자 수정 결과.
+class AdminUserOut(BaseModel):
+    """관리자 화면의 가입자 목록용 (보기 전용).
 
-    warnings 에는 관리자가 무시하고 저장한 규칙 설명이 담긴다.
-    (예: "단주기 예약 시간 제한(1~48시간)을 무시하고 저장했습니다.")
+    비밀번호 해시는 절대 담지 않는다. 이 스키마에 필드가 없으므로
+    response_model 을 거치면서 자동으로 걸러진다.
     """
 
-    reservation: AdminReservationOut
-    warnings: list[str] = []
+    id: int
+    name: str
+    email: EmailStr
+    is_admin: bool
+    created_at: datetime
+    # 지금 사용 중이거나 앞으로 예정된 예약 수 (취소·종료된 예약은 세지 않는다)
+    active_reservation_count: int
+
+    @field_serializer("created_at")
+    def _with_kst_offset(self, value: datetime) -> datetime:
+        return timeutil.as_aware(value)

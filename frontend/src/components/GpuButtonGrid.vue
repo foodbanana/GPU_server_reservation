@@ -4,23 +4,16 @@ import { computed } from 'vue'
 
 const props = defineProps({
   gpus: { type: Array, required: true },
-  rules: { type: Object, default: null }, // { short: {min_hours,max_hours}, long: {...} }
 })
 
 const 단주기 = computed(() => props.gpus.filter((g) => g.category === 'short'))
 const 장주기 = computed(() => props.gpus.filter((g) => g.category === 'long'))
-
-function 규칙문구(category) {
-  const r = props.rules?.[category]
-  if (!r) return ''
-  return `${r.min_hours}시간 ~ ${r.max_hours}시간`
-}
 </script>
 
 <template>
   <section class="group">
     <h2>단주기 GPU 예약</h2>
-    <p class="hint">짧게 쓰는 GPU입니다. {{ 규칙문구('short') }} 예약할 수 있습니다.</p>
+    <p class="hint">짧게 쓸 작업용입니다. 예약 시간 제한은 없으니 서로 협의해서 쓰세요.</p>
     <div class="grid">
       <RouterLink
         v-for="gpu in 단주기"
@@ -37,7 +30,7 @@ function 규칙문구(category) {
 
   <section class="group">
     <h2>장주기 GPU 예약</h2>
-    <p class="hint">길게 쓰는 GPU입니다. {{ 규칙문구('long') }} 예약할 수 있습니다.</p>
+    <p class="hint">며칠씩 오래 돌릴 작업용입니다. 예약 시간 제한은 없습니다.</p>
     <div class="grid">
       <RouterLink
         v-for="gpu in 장주기"

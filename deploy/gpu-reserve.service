@@ -36,7 +36,14 @@ Environment=PYTHONUNBUFFERED=1
 
 # 운영에서는 --reload 를 쓰지 않는다 (코드가 바뀔 때마다 서버가 끊기면 안 된다).
 # --host 0.0.0.0 이라야 같은 네트워크의 휴대폰·다른 PC에서 접속할 수 있다.
-ExecStart=/home/taeung/GPU_server_reservation_ws/backend/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+#
+# 포트 9080: 예전에는 8000 이었으나, 이 컴퓨터에서 강화학습·VLA 추론 서버가
+# 8000번대를 쓸 수 있어 충돌을 피하려고 옮겼다. (개발용 백엔드는 9081)
+# 이 줄을 고쳤으면 아래 세 명령을 다시 실행해야 반영된다:
+#   sudo cp .../deploy/gpu-reserve.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart gpu-reserve
+ExecStart=/home/taeung/GPU_server_reservation_ws/backend/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 9080
 
 # 비정상 종료(오류로 죽음)하면 5초 뒤 자동으로 다시 켠다.
 Restart=always

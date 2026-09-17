@@ -3,27 +3,28 @@
 - 전체 예약 목록 보기
 - 예약의 시작·종료 시각 수정 (GPU·예약자는 바꿀 수 없다)
 - 예약 강제 취소
+- 가입자 목록 보기 (보기 전용. 계정을 고치거나 지우는 기능은 없다)
 
 이 라우터의 모든 경로는 get_current_admin 을 거치므로,
 관리자가 아닌 사용자는 주소를 직접 입력해도 403 으로 막힌다.
 
 수정할 때의 규칙(PLAN 5장):
-- 중복(겹침) 검사는 관리자에게도 예외 없이 적용한다 → 409
-- 예약 길이 제한과 14일 범위 제한은 관리자만 무시할 수 있고,
-  무시하고 저장하면 응답의 warnings 에 경고 문구가 담긴다.
+- 예약 길이 제한과 '14일 이내 시작' 제한이 없어졌으므로 '관리자만 무시할 수 있는
+  규칙'도 없다. 관리자 수정에도 일반 예약과 똑같은 규칙이 적용된다.
+- 겹침은 관리자에게도 예외 없이 거부된다 → 409
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app import timeutil
 from app.database import get_db
 from app.deps import get_current_admin
-from app.models import Reservation, STATUS_ACTIVE, STATUS_CANCELLED
-from app.schemas import AdminReservationOut, AdminUpdateResult, ReservationTimeUpdate
+from app.models import Reservation, STATUS_ACTIVE, STATUS_CANCELLED, User
+from app.schemas import AdminReservationOut, AdminUserOut, ReservationTimeUpdate
 from app.services.reservation_rules import (
     ConflictError,
     RuleError,
@@ -80,17 +81,21 @@ def list_all_reservations(
     return list(db.scalars(query).all())
 
 
-@router.patch("/reservations/{reservation_id}", response_model=AdminUpdateResult)
+@router.patch("/reservations/{reservation_id}", response_model=AdminReservationOut)
 def update_reservation_time(
     reservation_id: int,
     body: ReservationTimeUpdate,
     db: Session = Depends(get_db),
-) -> AdminUpdateResult:
+) -> Reservation:
     """예약의 시작·종료 시각만 바꾼다.
 
-    다른 예약과 겹치면 409(관리자도 예외 없음),
-    정시·순서·지난 시간 검사에 걸리면 400 으로 거부한다.
-    길이·14일 제한은 무시하고 저장하되 경고를 함께 돌려준다.
+    다른 예약과 겹치면 409, 정시·순서·지난 시간 검사에 걸리면 400 으로 거부한다.
+    예약 길이 제한은 없으므로 얼마든지 길게 늘릴 수 있다.
+
+    **이미 시작된(사용 중인) 예약도 종료 시각만 바꾸면 연장·단축할 수 있다.**
+    시작 시각을 그대로 두면 '지난 시각' 검사를 건너뛰기 때문이다
+    (services/reservation_rules.py 의 current_start_at 참고).
+    시작 시각까지 과거로 옮기려고 하면 그때는 400 으로 거부된다.
     """
     reservation = _load(reservation_id, db)
 
@@ -104,14 +109,15 @@ def update_reservation_time(
     end_at = timeutil.to_naive_kst(body.end_at)
 
     try:
-        warnings = validate_reservation(
+        validate_reservation(
             db,
             reservation.gpu,
             start_at,
             end_at,
-            as_admin=True,
             # 자기 자신과는 겹친다고 하면 안 된다
             exclude_reservation_id=reservation.id,
+            # 시작 시각을 건드리지 않으면 사용 중인 예약도 종료만 바꿀 수 있다
+            current_start_at=reservation.start_at,
         )
     except RuleError as exc:
         db.rollback()
@@ -124,11 +130,7 @@ def update_reservation_time(
     reservation.end_at = end_at
     db.commit()
     db.refresh(reservation)
-
-    return AdminUpdateResult(
-        reservation=AdminReservationOut.model_validate(reservation),
-        warnings=warnings,
-    )
+    return reservation
 
 
 @router.delete("/reservations/{reservation_id}", response_model=AdminReservationOut)
@@ -151,3 +153,41 @@ def force_cancel_reservation(
     db.commit()
     db.refresh(reservation)
     return reservation
+
+
+# ---------- 가입자 목록 (보기 전용) ----------
+
+@router.get("/users", response_model=list[AdminUserOut])
+def list_users(db: Session = Depends(get_db)) -> list[AdminUserOut]:
+    """가입한 사람 목록. 가입이 빠른 사람부터 보여준다.
+
+    비밀번호 해시는 절대 내보내지 않는다 (AdminUserOut 에 필드 자체가 없다).
+    계정을 고치거나 지우는 기능은 일부러 만들지 않았다 — 보기 전용이다.
+    """
+    now = timeutil.now_kst()
+
+    # 사람마다 '지금 사용 중이거나 앞으로 예정된 예약'이 몇 건인지 한 번에 센다.
+    # (취소된 예약과 이미 끝난 예약은 세지 않는다)
+    counts = dict(
+        db.execute(
+            select(Reservation.user_id, func.count(Reservation.id))
+            .where(
+                Reservation.status == STATUS_ACTIVE,
+                Reservation.end_at > now,
+            )
+            .group_by(Reservation.user_id)
+        ).all()
+    )
+
+    users = db.scalars(select(User).order_by(User.created_at, User.id)).all()
+    return [
+        AdminUserOut(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            is_admin=user.is_admin,
+            created_at=user.created_at,
+            active_reservation_count=counts.get(user.id, 0),
+        )
+        for user in users
+    ]

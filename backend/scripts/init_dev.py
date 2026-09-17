@@ -1,10 +1,10 @@
 """개발용 설정과 개발용 DB 준비하기 (Phase 5).
 
 왜 필요한가:
-  운영 서버(포트 8000)는 systemd 가 계속 켜 두고, 진짜 DB(`data/gpu.db`)를 쓴다.
+  운영 서버(포트 9080)는 systemd 가 계속 켜 두고, 진짜 DB(`data/gpu.db`)를 쓴다.
   앞으로 코드를 고칠 때 그 서버와 그 DB를 건드리면 안 된다.
   그래서 **개발 전용 설정 파일과 개발 전용 DB**를 따로 만들어 두고,
-  개발할 때는 포트 8001 + 개발용 DB 로만 서버를 켠다.
+  개발할 때는 포트 9081 + 개발용 DB 로만 서버를 켠다.
 
 만드는 것:
   backend/config.dev.yaml   개발용 설정 (가입 코드·비밀키가 운영과 다르다)
@@ -42,9 +42,9 @@ DEV_INVITE_CODE = "DEV-CODE-1234"
 #   - 화면(static_dir)을 서빙하지 않는다. 개발 중에는 vite(5173)가 화면을 맡는다.
 #   - 가입 코드와 JWT 비밀키가 운영과 다르다.
 #
-# 이 설정으로 서버 켜기 (backend 폴더에서, 포트 8001):
+# 이 설정으로 서버 켜기 (backend 폴더에서, 포트 9081):
 #   GPU_RESERVE_CONFIG=config.dev.yaml PYTHONPATH= \\
-#     venv/bin/python -m uvicorn app.main:app --reload --port 8001
+#     venv/bin/python -m uvicorn app.main:app --reload --port 9081
 """
 
 
@@ -97,7 +97,7 @@ def main() -> int:
     print()
     print("개발 서버 켜기 — 터미널 2개:")
     print("  [1] cd backend && GPU_RESERVE_CONFIG=config.dev.yaml PYTHONPATH= \\")
-    print("        venv/bin/python -m uvicorn app.main:app --reload --port 8001")
+    print("        venv/bin/python -m uvicorn app.main:app --reload --port 9081")
     print("  [2] cd frontend && npm run dev     ->  http://localhost:5173")
     return 0
 

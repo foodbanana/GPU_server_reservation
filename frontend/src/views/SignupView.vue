@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import BrandHeader from '../components/BrandHeader.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -58,8 +59,10 @@ async function 가입() {
 </script>
 
 <template>
+  <BrandHeader />
+
   <div class="card">
-    <h1>회원가입</h1>
+    <h2>회원가입</h2>
 
     <form @submit.prevent="가입">
       <div class="field">
@@ -116,9 +119,9 @@ async function 가입() {
 </template>
 
 <style scoped>
-h1 {
+h2 {
   margin-top: 0;
-  font-size: 1.35rem;
+  font-size: 1.15rem;
 }
 
 .wide {
