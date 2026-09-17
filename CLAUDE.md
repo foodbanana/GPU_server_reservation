@@ -31,7 +31,7 @@
 - **운영과 개발을 섞지 않는다 (Phase 5 이후).**
   - 운영: systemd 서비스 `gpu-reserve`, 포트 **9080**, 설정 `config.yaml`, DB `data/gpu.db`.
   - 개발·확인: 포트 **9081**(또는 비어 있는 다른 포트), 설정 `config.dev.yaml`, DB `backend/dev/dev.db`.
-  - **8000번대 포트는 쓰지 않는다.** 이 컴퓨터에서 강화학습·VLA 추론 서버가 8000번대를 쓸 수 있어서
+  - **8000번대 포트는 쓰지 않는다.** 이 서버에서 다른 프로그램이 8000번대를 쓸 수 있어
     충돌을 피하려고 9080/9081 로 옮겼다. (예전 포트는 8000/8001 이었다)
   - 개발용 명령에는 항상 `GPU_RESERVE_CONFIG=` 로 개발 설정을 지정한다. 안 붙이면 운영 DB를 쓰게 된다.
   - 운영 서비스를 `systemctl stop/restart` 하지 않는다. 필요하면 사용자에게 명령을 알려준다.
@@ -44,7 +44,7 @@
 >
 > **주의 2:** Phase 5부터 **운영 서버(포트 9080)가 systemd 로 항상 돌고 있다.**
 > 개발할 때는 운영을 끄지 말고 **포트 9081 + 개발용 DB** 로 따로 띄운다.
-> 초보자용 상세 안내는 `README.md` 에 있다.
+> 설치·운영·서버 이전 절차는 `README.md` 에 있다.
 
 | | 운영 | 개발 |
 |---|---|---|
@@ -110,13 +110,13 @@ PYTHONPATH= venv/bin/python -m pytest tests/test_permissions.py tests/test_admin
 PYTHONPATH= venv/bin/python -m pytest tests/test_static.py    # 빌드 화면 서빙·SPA 폴백만
 ```
 
-### 휴대폰에서 확인할 때
+### 다른 기기(휴대폰 등)에서 확인할 때
 ```bash
-ip -4 addr show scope global | grep inet   # 데스크탑 IP 확인
-# 운영 화면: http://<데스크탑IP>:9080
-# 개발 화면: http://<데스크탑IP>:5173  (npm run dev 는 기본으로 외부 접속 허용)
+ip -4 addr show scope global | grep inet   # 서버 IP 확인
+# 운영 화면: http://<서버IP>:9080
+# 개발 화면: http://<서버IP>:5173  (npm run dev 는 기본으로 외부 접속 허용)
 ```
-휴대폰이 없어도 PC 크롬에서 **F12 → Ctrl+Shift+M** 을 누르면 휴대폰 화면 크기로 볼 수 있다.
+PC 크롬에서 **F12 → Ctrl+Shift+M** 으로도 휴대폰 화면 크기를 확인할 수 있다.
 
 ### 로그인이 꼬였을 때
 브라우저 개발자도구(F12) → Application → Local Storage → `gpu-reserve-token` 삭제
@@ -139,7 +139,7 @@ sudo systemctl stop gpu-reserve           # 중지
 ```bash
 cd backend
 PYTHONPATH= venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 9080
-# --reload 를 쓰지 않는다. 화면+API 가 http://<데스크탑IP>:9080 하나로 나온다.
+# --reload 를 쓰지 않는다. 화면+API 가 http://<서버IP>:9080 하나로 나온다.
 # 이미 서비스가 켜져 있으면 포트 충돌이 나므로 먼저 서비스를 중지해야 한다.
 ```
 
@@ -215,9 +215,9 @@ GPU_RESERVE_CONFIG=demo/config.yaml PYTHONPATH= \
 
 | 파일 | 역할 |
 |---|---|
-| `README.md` | 초보자용 설치·운영·백업·복구 안내 (사용자가 보는 문서) |
+| `README.md` | 설치·운영·백업·복구·서버 이전 안내 (사용자가 보는 문서) |
 | `SPEC.md` / `PLAN.md` | 요구사항 / 전체 설계 |
-| `deploy/gpu-reserve.service` | systemd 서비스 정의 (User=taeung, 자동 시작·재시작, `PYTHONPATH=`) |
+| `deploy/gpu-reserve.service` | systemd 서비스 정의 (실행 계정·절대경로·`PYTHONPATH=`, 자동 시작·재시작). 서버를 옮기면 `User=`/`Group=`/`WorkingDirectory=`/`GPU_RESERVE_CONFIG=`/`ExecStart=` 를 모두 고친다 |
 | `deploy/backup_db.sh` | SQLite 온라인 백업 (서버 켜진 채로 안전), 날짜별 파일, 30일 보관 |
 | `deploy/backup.conf.example` | 백업 폴더·보관 기간 설정 예시 |
 | `backend/app/static_files.py` | 빌드된 화면 서빙 + 새로고침 대비 SPA 폴백 |
