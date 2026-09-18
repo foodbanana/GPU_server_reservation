@@ -1,0 +1,6 @@
+# Vercel 의 파이썬 함수가 설치할 라이브러리 목록.
+#
+# 목록을 두 군데서 관리하면 반드시 어긋나므로, 실제 목록은
+# backend/requirements.txt 하나로만 관리하고 여기서는 그 파일을 가리키기만 한다.
+# (로컬 설치는 지금까지처럼 backend 폴더에서 하면 된다)
+-r backend/requirements.txt

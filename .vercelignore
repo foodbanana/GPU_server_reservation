@@ -1,0 +1,28 @@
+# Vercel 에 올리지 않을 것들 (용량·속도, 그리고 실수 방지)
+
+# 파이썬 가상환경 (수백 MB. Vercel 은 requirements.txt 로 직접 설치한다)
+backend/venv/
+venv/
+
+# 진짜 DB 파일 — 클라우드에 올릴 이유가 없다
+data/
+backend/dev/
+backend/demo/
+
+# 비밀 설정 (원래 git 에도 안 올라가지만 한 번 더 막는다)
+backend/config.yaml
+backend/config.dev.yaml
+backend/secrets/
+
+# 빌드·테스트 부산물
+node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 서버리스 함수에 필요 없는 것들
+backend/tests/
+backend/scripts/
+deploy/
+picture/

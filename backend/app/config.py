@@ -1,7 +1,19 @@
 """config.yaml 을 읽어서 파이썬 객체로 바꿔 준다.
 
 설정값을 코드에 직접 박지 않기 위한 파일이다(SPEC 3장).
-환경변수 GPU_RESERVE_CONFIG 로 다른 설정 파일을 지정할 수 있다(테스트에서 사용).
+환경변수 GPU_RESERVE_CONFIG 로 다른 설정 파일을 지정할 수 있다(테스트·Vercel 에서 사용).
+
+**비밀값은 환경변수로도 넣을 수 있다.**
+Vercel 같은 곳에서는 서버에 파일을 올려 고칠 수가 없어서, 비밀값을 설정 파일 대신
+환경변수로 준다. 그래서 아래 두 값은 '환경변수가 있으면 그걸 쓰고, 없으면 파일에서
+읽는' 방식으로 동작한다.
+
+    GPU_RESERVE_INVITE_CODE   <- app.invite_code (연구실 가입 코드)
+    GPU_RESERVE_JWT_SECRET    <- app.jwt_secret  (로그인 토큰 서명용 비밀키)
+
+DB 주소(DATABASE_URL)도 환경변수다. 그건 database.py 가 직접 읽는다.
+직접 운영하는 서버(systemd)는 지금까지처럼 config.yaml 만 쓰면 되고,
+환경변수를 안 넣으면 동작이 하나도 바뀌지 않는다.
 """
 
 from __future__ import annotations
@@ -53,8 +65,27 @@ class Config:
     google_enabled: bool
 
 
+#: 비밀값을 환경변수로 넣을 때 쓰는 이름
+ENV_INVITE_CODE = "GPU_RESERVE_INVITE_CODE"
+ENV_JWT_SECRET = "GPU_RESERVE_JWT_SECRET"
+
+
 def _config_path() -> Path:
     return Path(os.environ.get("GPU_RESERVE_CONFIG", DEFAULT_CONFIG_PATH))
+
+
+def _read_secret(app_raw: dict, key: str, env_name: str, path: Path) -> str:
+    """비밀값 하나를 읽는다. 환경변수가 먼저고, 없으면 설정 파일에서 읽는다."""
+    value = os.environ.get(env_name, "").strip()
+    if not value:
+        value = str(app_raw.get(key) or "").strip()
+    if not value:
+        raise RuntimeError(
+            f"app.{key} 값이 비어 있습니다. 둘 중 하나로 채워 주세요.\n"
+            f"  - 설정 파일에 직접 적기: {path} 의 app.{key}\n"
+            f"  - 환경변수로 넣기: {env_name} (Vercel 처럼 파일을 고칠 수 없는 곳)"
+        )
+    return value
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -70,9 +101,8 @@ def load_config(path: Path | None = None) -> Config:
     rules_raw = raw.get("rules", {})
     gpus_raw = raw.get("gpus", []) or []
 
-    for key in ("invite_code", "jwt_secret"):
-        if not app_raw.get(key):
-            raise RuntimeError(f"{path} 의 app.{key} 값이 비어 있습니다. 값을 채워 주세요.")
+    invite_code = _read_secret(app_raw, "invite_code", ENV_INVITE_CODE, path)
+    jwt_secret = _read_secret(app_raw, "jwt_secret", ENV_JWT_SECRET, path)
 
     if len(gpus_raw) == 0:
         raise RuntimeError(f"{path} 의 gpus 목록이 비어 있습니다.")
@@ -109,8 +139,8 @@ def load_config(path: Path | None = None) -> Config:
 
     return Config(
         timezone=str(app_raw.get("timezone", "Asia/Seoul")),
-        invite_code=str(app_raw["invite_code"]),
-        jwt_secret=str(app_raw["jwt_secret"]),
+        invite_code=invite_code,
+        jwt_secret=jwt_secret,
         jwt_expire_days=int(app_raw.get("jwt_expire_days", 30)),
         database_path=db_path,
         static_dir=static_dir,

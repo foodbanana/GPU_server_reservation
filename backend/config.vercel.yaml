@@ -1,0 +1,48 @@
+# Vercel 배포용 설정 — 이 파일은 git 에 올라간다.
+#
+# **비밀값을 절대 여기에 적지 마라.**
+# 가입 코드와 JWT 비밀키는 비워 두고, Vercel 대시보드의 환경변수로 넣는다.
+#   Settings -> Environment Variables
+#     GPU_RESERVE_INVITE_CODE   연구실 가입 코드
+#     GPU_RESERVE_JWT_SECRET    로그인 토큰 서명용 긴 임의 문자열
+#     DATABASE_URL              Neon Postgres 주소
+# (app/config.py 가 '환경변수 있으면 그 값, 없으면 이 파일' 순서로 읽는다)
+#
+# 직접 운영하는 서버(systemd)는 이 파일이 아니라 config.yaml 을 계속 쓴다.
+
+app:
+  timezone: "Asia/Seoul"
+  invite_code: ""           # 비워 둔다. GPU_RESERVE_INVITE_CODE 환경변수로 넣는다.
+  jwt_secret: ""            # 비워 둔다. GPU_RESERVE_JWT_SECRET 환경변수로 넣는다.
+  jwt_expire_days: 30
+
+  # Vercel 에서는 이 값을 쓰지 않는다. DB는 반드시 DATABASE_URL(Neon Postgres)로 준다.
+  # (Vercel 은 파일을 저장할 수 없어서 SQLite 를 쓸 수 없다)
+  # 혹시라도 실수로 SQLite 가 쓰이더라도 진짜 운영 DB(data/gpu.db)는 건드리지 않도록
+  # 일부러 개발용 폴더(git 에 올라가지 않음)를 가리켜 둔다.
+  database_path: "dev/unused-on-vercel.db"
+
+  # 빈 값 = FastAPI 가 화면을 서빙하지 않는다.
+  # Vercel 에서는 화면(frontend/dist)을 Vercel 이 직접 내보내고, 파이썬 함수는 API만 맡는다.
+  static_dir: ""
+
+rules:
+  slot_minutes: 60            # 예약 단위 (1시간)
+  timeline_days: 14           # 타임라인 화면이 한 번에 보여 주는 일수 (화면 표시용)
+
+gpus:                         # 서버3 A100/maxQ 번호가 반대면 여기만 고치면 된다
+  - { server_no: 1, gpu_index: 0, model: "A6000",     category: short }
+  - { server_no: 1, gpu_index: 1, model: "A6000",     category: short }
+  - { server_no: 1, gpu_index: 2, model: "A6000",     category: long  }
+  - { server_no: 1, gpu_index: 3, model: "A6000",     category: long  }
+  - { server_no: 2, gpu_index: 0, model: "RTX 3090",  category: short }
+  - { server_no: 2, gpu_index: 1, model: "RTX 3090",  category: short }
+  - { server_no: 2, gpu_index: 2, model: "RTX 3090",  category: long  }
+  - { server_no: 2, gpu_index: 3, model: "RTX 3090",  category: long  }
+  - { server_no: 3, gpu_index: 0, model: "A100",      category: short }
+  - { server_no: 3, gpu_index: 1, model: "A100",      category: long  }
+  - { server_no: 3, gpu_index: 2, model: "maxQ 6000", category: short }
+  - { server_no: 3, gpu_index: 3, model: "maxQ 6000", category: long  }
+
+google:
+  enabled: false
