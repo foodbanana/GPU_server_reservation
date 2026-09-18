@@ -2,540 +2,439 @@
 
 연구실 GPU 서버 3대(GPU 12장)의 사용 시간을 예약하고, 예약 현황을 시간표로 확인하는 웹 서비스.
 
-- 같은 GPU에서 시간이 겹치는 예약은 서버가 거부한다.
-- 예약 길이·기간 제한은 없다. (연구실 내 협의로 사용)
-- 시간표는 2주 단위로 보여 주며, 이전/다음 2주로 이동할 수 있다.
-- 모든 시간은 한국 시간(Asia/Seoul) 기준이다.
+현재 **Vercel + Neon Postgres** 로 배포되어 운영 중이다. 브라우저만 있으면 어디서든 접속할 수 있고,
+따로 켜 두어야 하는 서버 컴퓨터는 없다.
 
-이 문서는 **서버 컴퓨터에 설치·운영·이전**하는 데 필요한 내용만 담는다.
-요구사항은 `SPEC.md`, 설계는 `PLAN.md` 참고.
+> 과거에는 연구실 리눅스 서버에서 systemd 로 직접 운영했다.
+> 그때의 설치·백업·방화벽 절차가 필요하면 git 히스토리의 예전 README 를 참고한다.
 
 ---
 
-## 1. 검증 환경
+## 목차
 
-현재 코드는 아래 환경에서 개발·검증되었다.
+1. [무엇을 하는 서비스인가](#1-무엇을-하는-서비스인가)
+2. [구조 (세 조각)](#2-구조-세-조각)
+3. [환경변수](#3-환경변수)
+4. [코드를 고치면 어떻게 배포되나](#4-코드를-고치면-어떻게-배포되나)
+5. [DB 첫 준비 (새 Neon DB를 쓸 때)](#5-db-첫-준비-새-neon-db를-쓸-때)
+6. [관리자 기능](#6-관리자-기능)
+7. [로컬 개발](#7-로컬-개발)
+8. [문제가 생기면](#8-문제가-생기면)
+9. [폴더 구조](#9-폴더-구조)
 
-| 항목 | 버전 |
+---
+
+## 1. 무엇을 하는 서비스인가
+
+연구실 사람들이 GPU를 겹치지 않게 나눠 쓰도록 도와주는 예약 시스템이다.
+
+**핵심 규칙**
+
+| 규칙 | 내용 |
 |---|---|
-| OS | **Ubuntu 24.04 LTS** |
-| Python | **3.12.3** (최소 3.10) |
-| Node.js / npm | **24.21.0 / 11.19.0** (화면 빌드에만 필요) |
-| 서비스 관리 | systemd |
-| DB | SQLite (파일 1개, 별도 설치 불필요) |
-| 백엔드 / 프론트엔드 | FastAPI / Vue 3 + Vite |
+| 겹침 금지 | 같은 GPU에서 시간이 겹치는 예약은 **서버가 거부**한다. 두 사람이 같은 순간에 눌러도 한 명만 성공한다 |
+| 시간 단위 | 1시간. 정시에 시작해서 정시에 끝난다 (예: 14:00 ~ 18:00) |
+| 지난 시각 | 이미 지난 시각으로는 예약할 수 없다 (기준은 '현재 시각이 속한 정시') |
+| 예약 길이 | **제한 없다.** 며칠짜리도 가능하며, 연구실 내 협의로 쓴다 |
+| 시간대 | 모든 시간은 **한국 시간(Asia/Seoul)** 기준 |
 
-### 다른 OS·버전으로 옮길 때 확인할 것
+겹침 판정은 `새 시작 < 기존 종료 AND 새 종료 > 기존 시작` 이다.
+끝나는 시각과 시작 시각이 같은 경우(10시 종료 ↔ 10시 시작)는 겹치지 않는 것으로 본다.
 
-- **Python은 3.10 이상이어야 한다.**
-  `backend/requirements.txt` 에 고정된 fastapi 0.141.1 / uvicorn 0.53.0 / pytest 9.1.1 이 모두
-  `Requires-Python >= 3.10` 이다. Ubuntu 20.04 의 기본 Python 은 3.8 이므로 별도 설치가 필요하다.
-  (`deadsnakes` PPA 로 `python3.12` 와 `python3.12-venv` 를 설치하는 방법이 가장 간단하다)
-  - 참고: `uvicorn[standard]` 가 끌어오는 `websockets` 최신판은 Python 3.11 이상을 요구한다.
-    3.10 에서는 pip 이 자동으로 이전 버전을 고른다. 가능하면 **3.11 이상**을 쓴다.
-- **pip 이 너무 오래되면 설치가 실패한다.** (bcrypt 5.0.0 등이 최신 wheel 형식을 쓴다)
-  venv 를 만든 직후 `PYTHONPATH= venv/bin/pip install --upgrade pip` 를 먼저 실행한다.
-- **`tzdata` 가 설치되어 있어야 한다.** 코드가 `zoneinfo.ZoneInfo("Asia/Seoul")` 로 시간을 계산한다.
-  최소 설치 환경(컨테이너 등)에서는 `sudo apt install tzdata` 가 필요할 수 있다.
-  시스템 시간대 자체는 무엇이든 상관없다. 코드가 KST 를 직접 지정한다.
-- **systemd 가 있어야 `deploy/gpu-reserve.service` 를 그대로 쓸 수 있다.**
-  없는 환경이면 같은 `ExecStart` 명령을 다른 방식(supervisor, tmux 등)으로 실행한다.
-- **서비스 파일 안에 사용자와 절대경로가 박혀 있다.** 아래 5곳을 모두 설치 환경에 맞게 고친다.
-  (자세한 내용은 4-6)
-  `User=` / `Group=` / `WorkingDirectory=` / `Environment=GPU_RESERVE_CONFIG=` / `ExecStart=`
-- **Node.js 는 화면 빌드에만 쓰인다.** 서버에 설치하기 어렵다면 다른 컴퓨터에서 `npm run build` 로
-  만든 `frontend/dist` 폴더를 통째로 복사해도 된다. 운영 중에는 Node 가 필요 없다.
-- **백업 crontab 의 경로**도 새 설치 경로·계정에 맞게 다시 등록한다. (7장)
-- DB 는 빈 상태로 새로 시작하거나, 기존 DB 파일을 복사해 올 수 있다. (9장)
+**주요 화면**
+
+- **타임라인** — 2주치 예약 현황을 시간표로 보여 준다. 이전/다음 2주로 옮겨 더 먼 미래도 볼 수 있다.
+  GPU 12행을 단주기 6개 / 장주기 6개로 나눠 보여 주고, 현재 시각을 세로선으로 표시한다.
+- **예약 신청** — GPU를 고르고 시작·종료 시각을 정한다.
+- **내 예약** — 시작 전인 예약은 취소, 사용 중인 예약은 조기 종료(남은 시간 반납)할 수 있다.
+- **관리자** — 전체 예약 관리와 가입자 관리. [6장](#6-관리자-기능) 참고.
+
+자세한 요구사항은 `SPEC.md`, 설계는 `PLAN.md` 참고.
 
 ---
 
-## 2. 포트
+## 2. 구조 (세 조각)
 
-| 포트 | 용도 | 비고 |
+서비스는 세 군데에 나뉘어 있다. 하나씩 무슨 일을 하는지 알면 문제가 생겼을 때 어디를 볼지 바로 안다.
+
+```
+     [사용자 브라우저]
+            │
+            ▼
+   ┌──────────────────────────────────────┐
+   │              Vercel                  │
+   │                                      │
+   │  ① 화면 (Vue 3 + Vite 빌드 결과)      │   ← 정적 파일을 그대로 내보낸다
+   │  ② API  (FastAPI 서버리스 함수)       │   ← /api/... 요청만 여기로
+   └──────────────────────────────────────┘
+                     │
+                     ▼
+        ┌────────────────────────┐
+        │   Neon Postgres        │   ← 계정·예약 데이터 저장 (미국 us-east)
+        └────────────────────────┘
+
+        [GitHub]  ── main 브랜치에 push 되면 Vercel이 자동 배포
+```
+
+| 조각 | 무엇 | 하는 일 |
 |---|---|---|
-| **9080** | 운영 서버 (화면 + API) | 접속 주소: `http://<서버IP>:9080` |
-| 9081 | 개발용 백엔드 | 개발할 때만 사용 |
-| 5173 | Vite 개발 서버 (화면) | 개발할 때만 사용, `/api` 요청을 9081 로 전달 |
+| **GitHub** | 코드 보관 | `main` 브랜치가 **프로덕션**이다. 여기에 merge 되면 바로 배포된다 |
+| **Vercel** | 실행 | 화면(정적 파일)을 내보내고, `/api/...` 요청은 FastAPI를 **서버리스 함수**로 깨워서 처리한다 |
+| **Neon** | 데이터 | 계정·예약을 저장하는 Postgres. 미국 us-east 리전 |
 
-- 외부에 열어야 할 포트는 **9080** 하나다. 9081, 5173 은 열 필요 없다.
-- 포트를 바꾸려면 `deploy/gpu-reserve.service` 의 `ExecStart=` 를 고친다.
-  개발용 포트를 바꾸면 `frontend/vite.config.js` 의 proxy target 도 같이 고친다.
-- 운영 사이트는 **한 대의 컴퓨터에서만** 켠다. DB 가 컴퓨터마다 따로 있어서,
-  두 곳에서 동시에 운영하면 겹침 검사가 무의미해진다.
-- 서버 IP 확인: `ip -4 addr show scope global | grep inet`
+**서버리스가 무슨 뜻인가**
+항상 켜져 있는 서버가 없다는 뜻이다. 요청이 올 때만 함수가 깨어나 처리하고, 한동안 요청이 없으면
+잠든다. 그래서 켜 두어야 할 컴퓨터도, 재시작해야 할 서비스도 없다.
+대신 **한동안 아무도 안 쓰다가 처음 접속하면 1~2초 정도 느릴 수 있다.** 이는 정상이다.
 
----
+**기술 스택**
 
-## 3. 운영과 개발
-
-| | 운영 | 개발 |
-|---|---|---|
-| 실행 | systemd (항상 켜짐) | 터미널에서 직접 |
-| 포트 | 9080 | 9081 + 5173 |
-| 설정 파일 | `backend/config.yaml` | `backend/config.dev.yaml` |
-| DB | `data/gpu.db` (실제 데이터) | `backend/dev/dev.db` |
-| 화면 | 빌드 결과(`frontend/dist`)를 백엔드가 서빙 | Vite 가 직접 서빙 |
-
-- 개발 명령에는 항상 `GPU_RESERVE_CONFIG=config.dev.yaml` 을 붙인다. 빠뜨리면 운영 DB 를 쓰게 된다.
-- 운영 서버가 `frontend/dist` 를 그대로 서빙하므로, 운영 중인 컴퓨터에서 개발 목적으로
-  `npm run build` 를 실행하면 운영 화면이 즉시 바뀐다. 빌드는 배포할 때만 한다.
-
-### PYTHONPATH
-
-이 프로젝트의 파이썬 명령에는 `PYTHONPATH=` 를 붙인다.
-`PYTHONPATH` 에 다른 경로(예: ROS 의 `/opt/ros/...`)가 들어 있으면 파이썬이 엉뚱한 모듈을 읽어
-pytest 나 서버가 오류를 낸다. 빈 값으로 덮어써서 이를 막는다.
-`deploy/gpu-reserve.service` 와 `deploy/backup_db.sh` 에도 같은 설정이 들어 있다.
-
----
-
-## 4. 설치
-
-아래 명령은 저장소 경로를 `/home/<사용자>/GPU_server_reservation_ws` 로 가정한다.
-
-### 4-1. 패키지
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip git cron tzdata
-```
-
-Node.js (화면을 이 컴퓨터에서 빌드할 경우):
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt install -y nodejs
-```
-
-### 4-2. 코드 받기
-
-```bash
-git clone git@github.com:foodbanana/GPU_server_reservation.git ~/GPU_server_reservation_ws
-```
-
-### 4-3. 백엔드
-
-```bash
-cd ~/GPU_server_reservation_ws/backend
-python3 -m venv venv
-PYTHONPATH= venv/bin/pip install --upgrade pip
-PYTHONPATH= venv/bin/pip install -r requirements.txt
-```
-
-### 4-4. 설정 파일
-
-```bash
-cd ~/GPU_server_reservation_ws/backend
-cp config.example.yaml config.yaml
-PYTHONPATH= venv/bin/python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-`config.yaml` 에서 아래 두 값을 채운다. 비어 있으면 서버가 시작되지 않는다.
-
-```yaml
-app:
-  invite_code: "연구실 가입 코드"
-  jwt_secret: "위에서 출력된 문자열"
-```
-
-- `config.yaml` 은 `.gitignore` 에 있어 git 에 올라가지 않는다. 서버를 옮길 때는 직접 복사해야 한다.
-- `database_path`, `static_dir` 는 **이 설정 파일 위치 기준 상대경로**로 해석된다.
-  기본값(`../data/gpu.db`, `../frontend/dist`)을 그대로 두면 저장소를 어디에 두든 동작한다.
-- GPU 모델명과 단주기/장주기 분류(`category: short | long`)는 같은 파일의 `gpus:` 에서 수정한다.
-  서버를 켤 때마다 이 목록대로 DB 의 GPU 정보를 맞춘다.
-
-### 4-5. 화면 빌드
-
-```bash
-cd ~/GPU_server_reservation_ws/frontend
-npm install
-npm run build
-```
-
-`frontend/dist/index.html` 이 생기면 된다. 이 폴더가 없으면 API 는 동작하지만 화면 대신 안내 메시지가 나온다.
-
-### 4-6. 서비스 등록
-
-`deploy/gpu-reserve.service` 안의 사용자와 **절대경로 5곳**을 먼저 고친다.
-
-| 항목 | 저장소의 현재 값 | 고칠 내용 |
-|---|---|---|
-| `User=` / `Group=` | `taeung` | 서버를 실행할 계정 (root 로 돌리지 않는다) |
-| `WorkingDirectory=` | `/home/taeung/GPU_server_reservation_ws/backend` | 새 설치 경로의 `backend` |
-| `Environment=GPU_RESERVE_CONFIG=` | `/home/taeung/.../backend/config.yaml` | 새 설치 경로의 `config.yaml` (절대경로) |
-| `ExecStart=` | `/home/taeung/.../backend/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 9080` | venv 파이썬 경로, 필요하면 포트 |
-
-`Environment=PYTHONPATH=` 와 `Environment=PYTHONUNBUFFERED=1`, `Restart=always` 는 그대로 둔다.
-
-```bash
-cd ~/GPU_server_reservation_ws
-sudo cp deploy/gpu-reserve.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now gpu-reserve
-```
-
-확인:
-
-```bash
-systemctl status gpu-reserve
-curl http://localhost:9080/api/health     # {"status":"ok"}
-```
-
-서비스 파일을 고칠 때마다 **복사 → `daemon-reload` → `restart`** 세 단계를 모두 실행해야 반영된다.
-
-### 4-7. 관리자 계정
-
-브라우저에서 평소처럼 회원가입한 뒤 그 계정을 관리자로 올리는 방법을 권장한다.
-
-```bash
-cd ~/GPU_server_reservation_ws/backend
-PYTHONPATH= venv/bin/python scripts/create_admin.py --email 관리자이메일@example.com
-```
-
-- 이미 가입한 이메일이면 **계정을 새로 만들지 않고 관리자로 승격**한다. (이름·비밀번호는 그대로)
-- 가입한 적 없는 이메일이면 이름과 비밀번호를 물어보고 새 관리자 계정을 만든다.
-  이름은 `--name 홍길동` 으로 미리 줄 수도 있다. `--email` 을 생략하면 이메일부터 물어본다.
-- 이미 로그인 중이었다면 **로그아웃 후 다시 로그인**해야 관리자 메뉴가 보인다.
-
----
-
-## 5. 서비스 관리
-
-| 작업 | 명령 |
+| 영역 | 사용 기술 |
 |---|---|
-| 상태 | `systemctl status gpu-reserve` |
-| 시작 | `sudo systemctl start gpu-reserve` |
-| 중지 | `sudo systemctl stop gpu-reserve` |
-| 재시작 | `sudo systemctl restart gpu-reserve` |
-| 부팅 시 자동 시작 켜기 / 끄기 | `sudo systemctl enable gpu-reserve` / `disable` |
-| 자동 시작 여부 확인 | `systemctl is-enabled gpu-reserve` |
-
-프로세스가 비정상 종료되면 systemd 가 5초 뒤 자동으로 다시 켠다. (`Restart=always`)
-
-### 로그
-
-```bash
-journalctl -u gpu-reserve -f              # 실시간
-journalctl -u gpu-reserve -n 100          # 최근 100줄
-journalctl -u gpu-reserve --since today   # 오늘
-journalctl -u gpu-reserve -p err          # 오류만
-```
+| 화면 | Vue 3, Vite, Vue Router, Pinia |
+| 서버 | Python 3.12, FastAPI, SQLAlchemy 2, PyJWT, bcrypt |
+| DB | Neon Postgres (로컬 개발에서는 SQLite) |
+| 배포 | Vercel (`vercel.json`, 진입점은 루트 `api/index.py`) |
 
 ---
 
-## 6. 코드 변경 반영
+## 3. 환경변수
+
+비밀값은 **코드나 설정 파일에 절대 적지 않는다.** 전부 Vercel 대시보드의 환경변수로 넣는다.
+
+> 설정 위치: Vercel 프로젝트 → **Settings → Environment Variables**
+> (Production / Preview / Development 을 모두 체크한다)
+
+| 이름 | 필수 | 역할 |
+|---|:---:|---|
+| `DATABASE_URL` | 필수 | Neon Postgres 접속 주소. **이 값이 없으면 API가 뜨지 않는다.** 이 값이 있으면 Postgres, 없으면 SQLite로 동작한다 |
+| `GPU_RESERVE_INVITE_CODE` | 필수 | 연구실 가입 코드. 회원가입할 때 이 코드를 맞게 입력해야 가입된다 |
+| `GPU_RESERVE_JWT_SECRET` | 필수 | 로그인 토큰에 서명하는 비밀키. **바꾸면 모든 사용자가 로그아웃된다** |
+| `GPU_RESERVE_SUPER_ADMIN_EMAIL` | 선택 | 최고 관리자로 보호할 이메일. 이 계정은 아무도(본인 포함) 관리자에서 해제할 수 없다. 넣지 않으면 이 보호만 꺼지고 나머지 기능은 정상 동작한다 |
+
+**값은 이 문서에 적지 않는다.** 이 저장소는 공개되어 있다.
+실제 값이 필요하면 Vercel 대시보드에서 확인한다.
+
+**환경변수를 바꾼 뒤에는 재배포해야 적용된다.**
+Vercel → Deployments → 최신 항목 → `...` → **Redeploy**
+
+비밀이 아닌 설정(GPU 목록, 시간대, 타임라인 일수 등)은 git에 커밋되는
+`backend/config.vercel.yaml` 에 들어 있다. GPU 모델명이나 번호를 바꾸려면 이 파일을 고친다.
+
+---
+
+## 4. 코드를 고치면 어떻게 배포되나
+
+`main` 브랜치가 **프로덕션**이다. main에 들어간 코드는 곧바로 실서비스에 반영된다.
+그래서 main에 직접 push하지 말고 아래 순서를 따른다.
 
 ```bash
-cd ~/GPU_server_reservation_ws
-./deploy/backup_db.sh
+# 1) 브랜치를 만든다
+git checkout main
 git pull
-(cd frontend && npm install && npm run build)
-(cd backend && PYTHONPATH= venv/bin/pip install -r requirements.txt)
-(cd backend && PYTHONPATH= venv/bin/python -m pytest)
-sudo systemctl restart gpu-reserve
-curl http://localhost:9080/api/health
+git checkout -b 작업-이름
+
+# 2) 고치고 커밋
+git add .
+git commit -m "무엇을 고쳤는지"
+
+# 3) 올린다
+git push -u origin 작업-이름
 ```
 
-| 변경한 곳 | 빌드 | pip install | 재시작 |
-|---|---|---|---|
-| `frontend/` | 필요 | - | 불필요 (브라우저 Ctrl+Shift+R) |
-| `backend/` 코드 | - | - | 필요 |
-| `backend/requirements.txt` | - | 필요 | 필요 |
-| `backend/config.yaml` | - | - | 필요 |
-| `deploy/gpu-reserve.service` | - | - | 복사 + `daemon-reload` + 재시작 |
-
-- 운영 서버는 `--reload` 없이 실행되므로 백엔드 코드 변경은 재시작해야 반영된다.
-- `config.yaml` 은 서버를 켤 때 한 번만 읽는다. 값이 잘못되면 서비스가 아예 시작되지 않으므로
-  재시작 후 `journalctl -u gpu-reserve -n 30` 으로 확인한다.
-
----
-
-## 7. 백업
-
-예약 데이터는 `data/gpu.db` 파일 하나에 들어 있다.
-
-### 수동 백업
-
-```bash
-~/GPU_server_reservation_ws/deploy/backup_db.sh
+```
+push ──▶ Vercel이 Preview 배포를 자동 생성 (실서비스와 별개 주소)
+                          │
+                          ▼
+             Preview 주소에서 직접 확인
+                          │
+                          ▼
+        GitHub에서 Pull Request → main에 merge
+                          │
+                          ▼
+              Vercel이 프로덕션 자동 재배포
 ```
 
-- SQLite 온라인 백업 API 를 쓰므로 **서비스가 켜진 상태에서도 안전하다.** (`cp` 로 직접 복사하지 않는다)
-- 복사 후 `PRAGMA integrity_check` 로 검사하고, 통과했을 때만 최종 파일 이름으로 바꾼다.
-  중간에 실패하면 `.tmp` 만 남고 이전 백업은 보존된다.
-- 결과: `~/gpu-reserve-backups/gpu_YYYY-MM-DD.db` (같은 날 다시 돌리면 덮어쓴다)
-- 30일 지난 백업은 자동 삭제된다.
-- 실행 기록: `~/gpu-reserve-backups/backup.log`
+**Preview 배포**는 실서비스와 다른 임시 주소로 뜬다. 여기서 먼저 눌러 보고 merge 하는 것이 안전하다.
+Preview 주소는 GitHub PR 화면이나 Vercel 대시보드의 Deployments 목록에서 볼 수 있다.
 
-### 자동 백업 (매일 04:00)
+> **주의: Preview 배포도 프로덕션과 같은 Neon DB를 쓴다.**
+> Preview에서 만든 계정·예약은 실제 데이터에 그대로 반영된다. 시험 삼아 넣은 예약도
+> 연구실 사람들 화면에 보인다는 뜻이다. 자세한 내용은 [8장](#8-문제가-생기면) 참고.
 
-crontab 은 **서비스 실행 계정으로, `sudo` 없이** 등록한다.
-로그 리디렉션 때문에 백업 폴더가 미리 있어야 하므로, **수동 백업을 한 번 먼저 실행한다.**
+**merge 전에 로컬에서 테스트를 돌려 보는 것을 권장한다.**
 
 ```bash
-~/GPU_server_reservation_ws/deploy/backup_db.sh      # 폴더 생성 겸 동작 확인
-(crontab -l 2>/dev/null; echo "0 4 * * * /home/<사용자>/GPU_server_reservation_ws/deploy/backup_db.sh >> /home/<사용자>/gpu-reserve-backups/cron.log 2>&1") | crontab -
-crontab -l
-```
-
-- 위 등록 명령은 한 번만 실행한다. 여러 번 실행하면 같은 작업이 중복 등록된다.
-- `0 4 * * *` = 매일 04:00 (분 시 일 월 요일).
-- 컴퓨터가 꺼져 있거나 절전 상태면 실행되지 않는다. (10장)
-
-### 백업 위치 변경
-
-```bash
-cp deploy/backup.conf.example deploy/backup.conf
-```
-
-`deploy/backup.conf` 에서 `BACKUP_DIR`, `KEEP_DAYS` 를 수정한다. 외장 디스크나 NAS 는 미리 마운트되어 있어야 한다.
-한 번만 다른 곳에 저장하려면 환경변수로도 된다. (환경변수 > `backup.conf` > 기본값 순으로 우선)
-
-```bash
-BACKUP_DIR=/mnt/usb ~/GPU_server_reservation_ws/deploy/backup_db.sh
+cd backend
+PYTHONPATH= venv/bin/python -m pytest
 ```
 
 ---
 
-## 8. 복구
+## 5. DB 첫 준비 (새 Neon DB를 쓸 때)
+
+Neon 프로젝트를 새로 만들었거나 DB를 비우고 다시 시작할 때만 하는 작업이다.
+**평소 운영에서는 할 일이 없다.**
+
+서버리스에서는 요청이 올 때마다 테이블을 확인하면 느려지므로, 자동 준비를 꺼 두었다.
+대신 아래 명령을 **로컬에서 한 번** 실행한다. (비밀값은 명령 앞에 붙여서 그때만 넘긴다)
+
+### 5-1. 테이블 · GPU · 겹침 방지 제약 만들기
 
 ```bash
-sudo systemctl stop gpu-reserve
+cd backend
 
-cd ~/GPU_server_reservation_ws/data
-mv gpu.db gpu.db.broken-$(date +%Y%m%d-%H%M)
-mv gpu.db-wal gpu.db-wal.old 2>/dev/null
-mv gpu.db-shm gpu.db-shm.old 2>/dev/null
-
-ls -lh ~/gpu-reserve-backups/
-cp ~/gpu-reserve-backups/gpu_YYYY-MM-DD.db ~/GPU_server_reservation_ws/data/gpu.db
-
-sudo systemctl start gpu-reserve
+DATABASE_URL='(Neon 접속 주소)' \
+GPU_RESERVE_CONFIG=config.vercel.yaml \
+GPU_RESERVE_INVITE_CODE='(가입 코드)' \
+GPU_RESERVE_JWT_SECRET='(비밀키)' \
+  PYTHONPATH= venv/bin/python scripts/init_db.py
 ```
 
-`gpu.db-wal`, `gpu.db-shm` 은 이전 DB 의 보조 파일이다. 남겨 두면 복구한 DB 와 섞이므로 반드시 치운다.
-복구한 파일의 소유자가 서비스 실행 계정인지 확인한다. (`ls -l`)
+하는 일 세 가지다.
+
+1. 테이블(`users`, `gpus`, `reservations`)을 만든다
+2. Postgres에 **겹침 방지 제약**을 건다 — 같은 GPU에 시간이 겹치는 예약이 DB 차원에서 거부된다
+3. `config.vercel.yaml` 의 목록대로 GPU 12장을 등록한다
+
+**여러 번 실행해도 안전하다.** 이미 있는 것은 건드리지 않고, **기존 예약이나 계정을 지우지 않는다.**
+GPU 목록(모델명·번호)을 바꿨을 때 다시 실행하면 GPU 정보만 갱신된다.
+
+### 5-2. 첫 관리자 계정 만들기
+
+웹 회원가입만으로는 관리자가 될 수 없다. 첫 관리자는 이 명령으로 만든다.
+
+```bash
+cd backend
+
+DATABASE_URL='(Neon 접속 주소)' \
+GPU_RESERVE_CONFIG=config.vercel.yaml \
+GPU_RESERVE_INVITE_CODE='(가입 코드)' \
+GPU_RESERVE_JWT_SECRET='(비밀키)' \
+  PYTHONPATH= venv/bin/python scripts/create_admin.py --email someone@example.com
+```
+
+- **이미 웹으로 가입한 이메일이면 계정을 새로 만들지 않고 그 계정을 관리자로 올린다.**
+  (이름·비밀번호는 그대로 둔다) — 이 방법을 권장한다.
+- 가입한 적 없는 이메일이면 이름과 비밀번호를 물어보고 새로 만든다.
+
+**첫 관리자를 만든 뒤에는 터미널을 쓸 일이 거의 없다.**
+그다음부터는 관리자가 웹 화면에서 다른 사람을 관리자로 올릴 수 있다.
 
 ---
 
-## 9. DB 이전 및 초기화
+## 6. 관리자 기능
 
-### 다른 컴퓨터의 DB 가져오기
+관리자로 로그인하면 상단에 **관리자** 메뉴가 생긴다. 탭이 두 개다.
 
-1. 기존 서버에서 `deploy/backup_db.sh` 실행 → `~/gpu-reserve-backups/gpu_YYYY-MM-DD.db` 생성
-2. 그 파일을 새 서버로 복사
-3. 새 서버의 서비스를 중지하고 `data/gpu.db` 로 복사 (8장과 같은 절차) 후 시작
+### 전체 예약 탭
 
-계정·비밀번호·예약이 모두 그대로 넘어간다.
-`config.yaml` 의 `jwt_secret` 이 기존 서버와 다르면 사용자들은 다시 로그인해야 한다.
+- 모든 사람의 예약을 본다 (상태·기간으로 걸러 볼 수 있다)
+- 예약의 **시작·종료 시각을 수정**한다 (GPU와 예약자는 바꿀 수 없다)
+- 예약을 **강제 취소**한다 (기록은 남고 상태만 '취소됨'으로 바뀐다)
 
-### 빈 DB로 시작
+관리자도 겹침 규칙을 똑같이 적용받는다. 다른 예약과 겹치면 저장되지 않는다.
+다만 **이미 시작된 예약은 시작 시각을 그대로 두고 종료 시각만** 바꾸면 연장·단축할 수 있다.
+
+### 가입자 탭
+
+- 가입한 사람 목록을 본다 (이름, 이메일, 권한, 가입일, 현재·예정 예약 수)
+- **관리자로 승격 / 관리자 해제** 버튼으로 권한을 바꾼다
+
+권한 변경에는 안전장치가 세 개 있다. 모두 **서버가** 막는다(화면에서도 버튼이 비활성화된다).
+
+| 막는 경우 | 이유 |
+|---|---|
+| 최고 관리자 해제 | `GPU_RESERVE_SUPER_ADMIN_EMAIL` 로 지정한 계정은 **본인 포함 누구도** 해제할 수 없다 |
+| 자기 자신 해제 | 누르는 순간 관리자 화면에서 튕겨 나가 혼란스럽다. 다른 관리자에게 부탁한다 |
+| 마지막 관리자 해제 | 관리자가 0명이 되면 아무도 관리자 화면에 못 들어간다 |
+
+권한을 바꾸면 **그 사람은 로그아웃했다가 다시 로그인해야** 메뉴가 바뀐다.
+
+### 비밀번호
+
+비밀번호는 **해시(bcrypt)로만 저장되어 원래 값을 볼 수 없다.** 관리자도 마찬가지다.
+잊어버린 사람이 있으면 새 비밀번호로 재설정해 준다.
 
 ```bash
-sudo systemctl stop gpu-reserve
-~/GPU_server_reservation_ws/deploy/backup_db.sh
-rm -f ~/GPU_server_reservation_ws/data/gpu.db ~/GPU_server_reservation_ws/data/gpu.db-wal ~/GPU_server_reservation_ws/data/gpu.db-shm
-sudo systemctl start gpu-reserve
+cd backend
+DATABASE_URL='(Neon 접속 주소)' GPU_RESERVE_CONFIG=config.vercel.yaml \
+GPU_RESERVE_INVITE_CODE='(가입 코드)' GPU_RESERVE_JWT_SECRET='(비밀키)' \
+  PYTHONPATH= venv/bin/python scripts/reset_password.py someone@example.com
 ```
 
-서비스가 시작되면 빈 DB 와 `config.yaml` 의 GPU 목록이 자동으로 만들어진다.
-이후 회원가입과 관리자 계정 생성을 다시 한다. (4-7)
-
----
-
-## 10. 서버 환경 설정
-
-### 절전 모드 (데스크탑 환경이 설치된 경우)
-
-절전 상태에서는 접속도 자동 백업도 되지 않는다.
+터미널에서 권한을 다루는 명령도 그대로 남아 있다. 환경변수를 잘못 넣어 웹에서 손댈 수 없게 됐을 때
+빠져나오는 비상구 역할을 한다.
 
 ```bash
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
-sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
-```
-
-되돌리기:
-
-```bash
-gsettings reset org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type
-sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target
-```
-
-### 방화벽 (ufw)
-
-```bash
-sudo ufw status
-```
-
-- `inactive` 면 추가 설정이 필요 없다.
-- `active` 면 `sudo ufw allow 9080/tcp`
-- 방화벽을 새로 켤 때는 **SSH 포트를 먼저 연다.** (원격 접속이 끊길 수 있다)
-
-```bash
-sudo ufw allow 22/tcp
-sudo ufw allow 9080/tcp
-sudo ufw enable
+PYTHONPATH= venv/bin/python scripts/set_admin.py someone@example.com           # 권한 주기
+PYTHONPATH= venv/bin/python scripts/set_admin.py someone@example.com --revoke  # 권한 빼기
+PYTHONPATH= venv/bin/python scripts/set_admin.py --list                        # 관리자 목록
 ```
 
 ---
 
-## 11. 문제 해결
+## 7. 로컬 개발
 
-### 접속이 안 될 때
-
-```bash
-systemctl status gpu-reserve              # 서비스 상태
-curl http://localhost:9080/api/health     # 서버 내부 응답
-ip -4 addr show scope global | grep inet  # IP 변경 여부
-sudo ufw status                           # 방화벽
-```
-
-서버 내부에서 `{"status":"ok"}` 가 나오면 서버는 정상이고 네트워크(IP 변경, 방화벽) 문제다.
-학교 내부망 밖(LTE 등)에서는 접속되지 않는다.
-
-### 서비스가 시작되지 않을 때
-
-```bash
-journalctl -u gpu-reserve -n 50 --no-pager
-```
-
-| 로그 메시지 | 원인 | 조치 |
-|---|---|---|
-| `Address already in use` | 9080 포트를 다른 프로그램이 쓰고 있다 | `ss -tlnp \| grep 9080` 으로 확인 후 정리 |
-| `설정 파일이 없습니다: <경로>` | `config.yaml` 이 없거나 서비스 파일의 `GPU_RESERVE_CONFIG` 경로가 틀렸다 | 4-4 / 4-6 |
-| `... 의 app.invite_code 값이 비어 있습니다` | 설정값을 채우지 않았다 (`jwt_secret` 도 같은 형태) | `config.yaml` 수정 후 재시작 |
-| `... 의 gpus 목록이 비어 있습니다` | `config.yaml` 의 `gpus:` 가 비었다 | `config.example.yaml` 참고해 채우기 |
-| `GPU 설정의 category 는 short 또는 long 이어야 합니다` | `category` 오타 | `short` / `long` 으로 수정 |
-| `ModuleNotFoundError` | 라이브러리 누락 또는 `PYTHONPATH` 오염 | `pip install -r requirements.txt`, 서비스 파일의 `Environment=PYTHONPATH=` 확인 |
-| `status=217/USER` | 서비스 파일의 `User=` 계정이 없다 | `User=` / `Group=` 수정 → 복사 → `daemon-reload` |
-| `status=200/CHDIR` 또는 `203/EXEC` | `WorkingDirectory=` / `ExecStart=` 경로가 틀렸다 | 경로 수정 → 복사 → `daemon-reload` |
-
-### 서비스는 켜졌는데 화면 대신 안내 메시지가 나올 때
-
-`/` 접속 시 HTTP 503 과 함께 `화면(프론트엔드) 빌드 결과를 찾지 못했습니다` 가 나오면
-`frontend/dist` 가 없는 것이다. 서비스는 정상이고 API 만 동작하는 상태다.
-
-```bash
-cd ~/GPU_server_reservation_ws/frontend && npm install && npm run build
-sudo systemctl restart gpu-reserve
-```
-
-`이 서버는 API만 제공합니다(개발용 설정)` 이 나오면 운영 서비스가 개발용 설정(`config.dev.yaml`)을
-읽고 있는 것이다. 서비스 파일의 `GPU_RESERVE_CONFIG` 경로를 확인한다.
-
-### 로그인 상태가 이상할 때
-
-브라우저 개발자도구(F12) → Application → Local Storage → `gpu-reserve-token` 삭제 후 새로고침.
-
-### 비밀번호를 잊은 사용자가 있을 때
-
-이메일로 찾는 기능은 없다. 서버에서 직접 재설정한다. (12장)
-
----
-
-## 12. 계정 관리 명령
-
-운영 DB 를 대상으로 하며, 서비스를 켜 둔 채 실행해도 된다. 모두 `backend` 폴더에서 실행한다.
-
-```bash
-cd ~/GPU_server_reservation_ws/backend
-
-# 관리자 생성 또는 기존 가입자 승격 (--name 은 새로 만들 때만 쓰인다)
-PYTHONPATH= venv/bin/python scripts/create_admin.py --email someone@example.com --name 홍길동
-
-# 관리자 권한 부여 / 해제 / 목록
-PYTHONPATH= venv/bin/python scripts/set_admin.py someone@example.com
-PYTHONPATH= venv/bin/python scripts/set_admin.py someone@example.com --revoke
-PYTHONPATH= venv/bin/python scripts/set_admin.py --list
-
-# 비밀번호 재설정 (새 비밀번호를 두 번 입력받는다)
-PYTHONPATH= venv/bin/python scripts/reset_password.py someone@example.com
-```
-
-- **마지막 남은 관리자의 권한은 해제할 수 없다.** 다른 사람을 먼저 관리자로 지정한 뒤 해제한다.
-- 가입한 적 없는 이메일에 `set_admin.py` / `reset_password.py` 를 쓰면
-  `가입된 적 없는 이메일입니다` 오류만 내고 아무것도 바꾸지 않는다.
-  계정까지 새로 만들려면 `create_admin.py` 를 쓴다.
-- 권한을 바꾼 뒤에는 그 사용자가 다시 로그인해야 화면에 반영된다.
-
----
-
-## 13. 개발
-
-운영 서버(9080)는 켜 둔 채로 작업한다.
+**환경변수 `DATABASE_URL` 을 넣지 않으면 SQLite 파일로 동작한다.** Neon에 붙지 않으므로
+진짜 데이터를 건드릴 걱정 없이 마음껏 시험할 수 있다.
 
 ### 최초 1회
 
 ```bash
-cd ~/GPU_server_reservation_ws/backend
-PYTHONPATH= venv/bin/python scripts/init_dev.py
+# 백엔드
+cd backend
+python3 -m venv venv
+PYTHONPATH= venv/bin/pip install -r requirements.txt
+PYTHONPATH= venv/bin/python scripts/init_dev.py     # config.dev.yaml + 개발용 DB 폴더 생성
+
+# 화면
+cd ../frontend
+npm install
 ```
 
-`config.dev.yaml` 과 개발용 DB 폴더(`backend/dev/`)를 만든다. 개발용 가입 코드는 `DEV-CODE-1234`.
-개발용 설정은 화면을 서빙하지 않고 API 만 제공한다. (화면은 Vite 가 맡는다)
+`init_dev.py` 가 만드는 개발용 설정의 가입 코드는 `DEV-CODE-1234` 다(`config.dev.yaml` 에 적혀 있다).
 
-### 실행
+### 실행 — 터미널 두 개
 
-터미널 1 — 개발용 백엔드 (9081):
-
+**터미널 1 — 백엔드 (포트 9081)**
 ```bash
-cd ~/GPU_server_reservation_ws/backend
-GPU_RESERVE_CONFIG=config.dev.yaml PYTHONPATH= venv/bin/python -m uvicorn app.main:app --reload --port 9081
+cd backend
+GPU_RESERVE_CONFIG=config.dev.yaml PYTHONPATH= \
+  venv/bin/python -m uvicorn app.main:app --reload --port 9081
 ```
 
-터미널 2 — 화면 (5173):
-
+**터미널 2 — 화면 (포트 5173)**
 ```bash
-cd ~/GPU_server_reservation_ws/frontend
+cd frontend
 npm run dev
 ```
 
-브라우저: `http://localhost:5173` (API 문서: `http://localhost:9081/docs`)
-개발 DB 를 비우려면 `rm -f backend/dev/dev.db*`.
+브라우저에서 **http://localhost:5173** 을 연다.
+화면의 `/api/...` 요청은 Vite가 9081로 넘겨준다(`frontend/vite.config.js` 의 proxy 설정).
+API를 직접 눌러 보려면 http://localhost:9081/docs 로 간다.
+
+| | 값 |
+|---|---|
+| 화면 | http://localhost:5173 |
+| 백엔드 | http://localhost:9081 |
+| 설정 파일 | `backend/config.dev.yaml` |
+| DB | `backend/dev/dev.db` (SQLite) |
+| 개발 DB 비우기 | `rm -f backend/dev/dev.db*` |
 
 ### 테스트
 
 ```bash
-cd ~/GPU_server_reservation_ws/backend
-PYTHONPATH= venv/bin/python -m pytest
+cd backend
+PYTHONPATH= venv/bin/python -m pytest        # 전체
+PYTHONPATH= venv/bin/python -m pytest -v     # 테스트 이름까지
 ```
 
-테스트는 매번 임시 폴더에 새 DB 를 만들어 쓴다. 운영·개발 DB 를 건드리지 않는다.
+테스트는 매번 **임시 폴더에 새 DB를 만들어** 쓴다. 개발 DB나 Neon을 건드리지 않는다.
+
+`DATABASE_URL` 을 앞에 붙이면 Postgres로도 같은 테스트를 돌릴 수 있다.
+다만 **테스트가 그 DB의 테이블을 모두 지웠다 다시 만들므로, 반드시 테스트 전용 DB 주소만 넣는다.**
+
+> **참고:** 이 명령들에 붙은 `PYTHONPATH=` 는 개발 컴퓨터에 설치된 ROS 경로를 잠깐 비워
+> pytest가 엉뚱한 플러그인을 읽지 않게 하는 것이다. ROS가 없는 컴퓨터라면 없어도 된다.
 
 ---
 
-## 14. 폴더 구조
+## 8. 문제가 생기면
+
+**증상으로 어디를 볼지 먼저 나눈다.**
+
+| 증상 | 원인일 가능성이 높은 곳 | 볼 곳 |
+|---|---|---|
+| 화면이 아예 안 뜬다 / 404 | Vercel 빌드 또는 배포 | Vercel → Deployments → 해당 배포의 **Build Logs** |
+| 화면은 뜨는데 로그인·예약이 안 된다 | Neon 또는 `DATABASE_URL` | Vercel → **Runtime Logs**, Neon 대시보드 |
+| 로그인이 자꾸 풀린다 | `GPU_RESERVE_JWT_SECRET` 이 바뀌었다 | Vercel 환경변수 |
+| 회원가입이 안 된다 | 가입 코드 불일치 | `GPU_RESERVE_INVITE_CODE` 값과 사람들에게 알려 준 코드 비교 |
+| 첫 접속만 1~2초 느리다 | **정상이다** | 아래 설명 참고 |
+
+### 주의: Preview 배포도 프로덕션 DB를 쓴다
+
+**Preview 배포도 프로덕션과 같은 Neon DB를 사용하므로, Preview에서 만든 데이터는
+실제 데이터에 그대로 반영된다.** Preview는 화면과 코드만 따로 뜨는 것이지 데이터가 분리되는 것이 아니다.
+
+| Preview에서 한 일 | 결과 |
+|---|---|
+| 시험용 계정으로 가입 | 실제 가입자 목록에 그대로 남는다 |
+| 시험 삼아 예약 생성 | 연구실 사람들 타임라인에 보이고, 그 시간을 남이 못 쓴다 |
+| 예약 취소·삭제 | 진짜로 취소된다 |
+| 관리자 권한 변경 | 실제 권한이 바뀐다 |
+
+그래서 Preview에서 시험한 뒤에는 **만들어 둔 시험 데이터를 반드시 정리한다.**
+화면 모양만 확인할 때는 문제없지만, 데이터를 만들거나 지우는 기능을 시험할 때는 주의한다.
+마음 편히 시험하려면 로컬 개발([7장](#7-로컬-개발))을 쓴다. 로컬은 SQLite라 Neon에 닿지 않는다.
+
+### Neon이 잠드는 것에 대해
+
+무료 플랜의 Neon은 **약 5분 동안 접속이 없으면 잠든다.** 그 뒤 첫 요청이 오면 깨어나는 데
+1~2초 정도 걸린다. 이건 고장이 아니라 원래 그런 동작이다. 잠깐 기다리면 그다음부터는 빠르다.
+연구실 사람들에게 "처음 한 번 느린 건 정상"이라고 알려 두면 문의가 줄어든다.
+
+### 자주 쓰는 확인 방법
+
+| 하고 싶은 것 | 방법 |
+|---|---|
+| API가 살아 있는지 | 브라우저에서 `(사이트 주소)/api/health` → `{"status":"ok"}` 가 나오면 정상 |
+| 서버 오류 메시지 보기 | Vercel → 해당 배포 → **Runtime Logs** |
+| 내 로그인 상태 초기화 | 브라우저 F12 → Application → Local Storage → `gpu-reserve-token` 삭제 |
+| 배포를 되돌리기 | Vercel → Deployments → 잘 되던 배포 → `...` → **Promote to Production** |
+
+**문제가 커지면 되돌리는 것이 먼저다.** 원인 파악은 그다음에 해도 된다.
+Vercel은 예전 배포를 그대로 보관하므로 위 방법으로 몇 초 만에 되돌릴 수 있다.
+
+### 데이터 백업
+
+Neon이 자체적으로 백업(복구 지점)을 관리한다. Neon 대시보드에서 확인할 수 있다.
+따로 서버에서 돌리는 백업 스크립트는 더 이상 쓰지 않는다.
+
+---
+
+## 9. 폴더 구조
 
 ```
 GPU_server_reservation_ws/
-├── README.md                설치·운영 안내 (이 문서)
+├── README.md                이 문서
 ├── SPEC.md                  요구사항
 ├── PLAN.md                  설계
+├── vercel.json              Vercel 배포 설정 (빌드·라우팅)
+├── requirements.txt         Vercel 함수용 파이썬 라이브러리 목록
+├── .python-version          Vercel에서 쓸 파이썬 버전 (3.12)
+│
+├── api/
+│   └── index.py             Vercel 서버리스 함수 진입점 (backend/app 을 불러온다)
+│
 ├── backend/
-│   ├── config.yaml          운영 설정 (git 제외, 직접 복사 필요)
-│   ├── config.dev.yaml      개발 설정 (git 제외, init_dev.py 가 생성)
+│   ├── app/                 서버 코드 (FastAPI)
+│   │   ├── main.py          앱 조립
+│   │   ├── models.py        DB 테이블 + 겹침 방지 제약
+│   │   ├── database.py      DATABASE_URL 있으면 Postgres, 없으면 SQLite
+│   │   ├── db_init.py       테이블·제약·GPU 준비 (서버리스에서는 자동 실행 꺼짐)
+│   │   ├── routers/         API 경로별 코드
+│   │   └── services/        예약 규칙·계정 규칙 (판단 로직)
+│   ├── scripts/             init_db, create_admin, set_admin, reset_password 등
+│   ├── tests/               테스트 (pytest)
+│   ├── config.vercel.yaml   배포용 설정 (git 포함, 비밀값 없음)
 │   ├── config.example.yaml  설정 예시
-│   ├── requirements.txt     파이썬 라이브러리 목록
-│   ├── app/                 서버 코드
-│   ├── scripts/             관리자·비밀번호·개발환경·데모 스크립트
-│   ├── tests/               테스트
-│   ├── dev/                 개발용 DB (git 제외)
+│   ├── config.dev.yaml      로컬 개발 설정 (git 제외, init_dev.py 가 생성)
+│   ├── dev/                 로컬 개발 DB (git 제외)
 │   └── venv/                파이썬 가상환경 (git 제외)
+│
 ├── frontend/
-│   ├── src/                 화면 코드
-│   ├── public/images/       로고
-│   ├── vite.config.js       개발 서버 포트·proxy 설정
-│   └── dist/                빌드 결과, 운영에서 서빙 (git 제외)
-├── deploy/
-│   ├── gpu-reserve.service  systemd 서비스 (사용자·경로 수정 필요)
-│   ├── backup_db.sh         DB 백업
-│   └── backup.conf.example  백업 설정 예시
-└── data/
-    └── gpu.db               운영 DB (git 제외, 백업 대상)
+│   ├── src/                 화면 코드 (Vue 3)
+│   │   ├── views/           화면별 컴포넌트 (타임라인, 예약, 내 예약, 관리자)
+│   │   ├── api/client.js    서버 호출
+│   │   └── router/          주소 연결 + 관리자 화면 차단
+│   ├── vite.config.js       개발 서버 포트·proxy
+│   └── dist/                빌드 결과 (git 제외, Vercel이 만든다)
+│
+└── deploy/                  과거 자체 서버 운영용 파일 (현재 사용하지 않음)
 ```
 
-git 에 올라가지 않는 것: `backend/config.yaml`, `backend/config.dev.yaml`, `backend/secrets/`,
-`data/*.db`, `backend/venv/`, `node_modules/`, `frontend/dist/`, `backend/dev/`, `backend/demo/`,
-`deploy/backup.conf`.
-**서버를 옮길 때는 `config.yaml` 과 `data/gpu.db` 를 따로 챙겨야 한다.**
+**git에 올라가지 않는 것:** `backend/config.yaml`, `backend/config.dev.yaml`, `backend/secrets/`,
+`backend/venv/`, `backend/dev/`, `backend/demo/`, `data/*.db`, `node_modules/`, `frontend/dist/`
+
+비밀값은 파일이 아니라 **Vercel 환경변수**에 있다. 이 저장소만 받아서는 서비스에 접속할 수 없다.
