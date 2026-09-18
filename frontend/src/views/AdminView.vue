@@ -210,10 +210,18 @@ function 권한바꿀수있나(u) {
   return true
 }
 
-/** 버튼을 못 쓰는 이유 (화면에 작게 보여 준다) */
+/**
+ * 버튼을 못 쓰는 이유 (화면에 작게 보여 준다).
+ *
+ * 조사('라' / '이라')까지 붙인 완결된 문구를 돌려준다.
+ * 한국어는 앞 글자의 받침 유무에 따라 조사가 달라지기 때문이다.
+ *   '최고 관리자' -> 받침 없음 -> '최고 관리자라'
+ *   '본인'        -> 받침 있음 -> '본인이라'
+ * 템플릿에서 고정으로 '이라'를 붙이면 '최고 관리자이라'가 되어 어색하다.
+ */
 function 권한못바꾸는이유(u) {
-  if (u.is_admin && u.is_super_admin) return '최고 관리자'
-  if (u.is_admin && 나인가(u)) return '본인'
+  if (u.is_admin && u.is_super_admin) return '최고 관리자라'
+  if (u.is_admin && 나인가(u)) return '본인이라'
   return ''
 }
 
@@ -428,7 +436,7 @@ async function 권한바꾸기(u) {
                         : '관리자로 승격'
                   }}
                 </button>
-                <span v-else class="locked">{{ 권한못바꾸는이유(u) }}이라 해제할 수 없음</span>
+                <span v-else class="locked">{{ 권한못바꾸는이유(u) }} 해제할 수 없음</span>
               </td>
             </tr>
           </tbody>
