@@ -1,6 +1,16 @@
-# Vercel 의 파이썬 함수가 설치할 라이브러리 목록.
-#
-# 목록을 두 군데서 관리하면 반드시 어긋나므로, 실제 목록은
-# backend/requirements.txt 하나로만 관리하고 여기서는 그 파일을 가리키기만 한다.
-# (로컬 설치는 지금까지처럼 backend 폴더에서 하면 된다)
--r backend/requirements.txt
+# 설치: python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+SQLAlchemy==2.0.54
+pydantic[email]==2.13.5
+PyJWT==2.14.0
+bcrypt==5.0.0
+PyYAML==6.0.3
+
+# Postgres(Neon 등) 드라이버.
+# 환경변수 DATABASE_URL 이 있을 때만 쓰인다. 없으면 지금처럼 SQLite 로 돈다.
+psycopg[binary]==3.3.5
+
+# 테스트용
+pytest==9.1.1
+httpx==0.28.1
