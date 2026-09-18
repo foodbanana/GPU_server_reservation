@@ -362,6 +362,8 @@ def test_가입자_목록에_비밀번호_해시가_들어가지_않는다(clien
             "name",
             "email",
             "is_admin",
+            # 화면에서 '해제 버튼을 감출지' 판단하는 값 (tests/test_admin_roles.py 참고)
+            "is_super_admin",
             "created_at",
             "active_reservation_count",
         }

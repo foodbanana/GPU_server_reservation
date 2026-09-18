@@ -106,6 +106,13 @@ export const api = {
     request(`/api/admin/reservations/${id}`, { method: 'PATCH', body }),
   adminDeleteReservation: (id) =>
     request(`/api/admin/reservations/${id}`, { method: 'DELETE' }),
-  // 가입자 목록 (보기 전용). 비밀번호 해시는 서버가 아예 내려주지 않는다.
+  // 가입자 목록. 비밀번호 해시는 서버가 아예 내려주지 않는다.
   adminUsers: () => request('/api/admin/users'),
+  // 관리자 권한 주기/뺏기. 대상은 user_id 또는 email 중 하나만 준다.
+  // 최고 관리자 해제·본인 해제·마지막 관리자 해제는 서버가 400으로 막는다.
+  adminSetUserRole: (userId, isAdmin) =>
+    request('/api/admin/users/role', {
+      method: 'PATCH',
+      body: { user_id: userId, is_admin: isAdmin },
+    }),
 }

@@ -3,7 +3,8 @@
 - 전체 예약 목록 보기
 - 예약의 시작·종료 시각 수정 (GPU·예약자는 바꿀 수 없다)
 - 예약 강제 취소
-- 가입자 목록 보기 (보기 전용. 계정을 고치거나 지우는 기능은 없다)
+- 가입자 목록 보기
+- 가입자에게 관리자 권한 주기 / 뺏기 (계정을 고치거나 지우는 기능은 여전히 없다)
 
 이 라우터의 모든 경로는 get_current_admin 을 거치므로,
 관리자가 아닌 사용자는 주소를 직접 입력해도 403 으로 막힌다.
@@ -25,7 +26,14 @@ from app import timeutil
 from app.database import get_db
 from app.deps import get_current_admin
 from app.models import Reservation, STATUS_ACTIVE, STATUS_CANCELLED, User
-from app.schemas import AdminReservationOut, AdminUserOut, ReservationTimeUpdate
+from app.schemas import (
+    AdminReservationOut,
+    AdminRoleResult,
+    AdminRoleUpdate,
+    AdminUserOut,
+    ReservationTimeUpdate,
+)
+from app.services import accounts
 from app.services.reservation_rules import (
     CONCURRENT_CONFLICT_MESSAGE,
     ConflictError,
@@ -175,7 +183,8 @@ def list_users(db: Session = Depends(get_db)) -> list[AdminUserOut]:
     """가입한 사람 목록. 가입이 빠른 사람부터 보여준다.
 
     비밀번호 해시는 절대 내보내지 않는다 (AdminUserOut 에 필드 자체가 없다).
-    계정을 고치거나 지우는 기능은 일부러 만들지 않았다 — 보기 전용이다.
+    계정을 고치거나 지우는 기능은 일부러 만들지 않았다.
+    바꿀 수 있는 것은 관리자 권한 하나뿐이다 (아래 update_user_role).
     """
     now = timeutil.now_kst()
 
@@ -199,8 +208,74 @@ def list_users(db: Session = Depends(get_db)) -> list[AdminUserOut]:
             name=user.name,
             email=user.email,
             is_admin=user.is_admin,
+            is_super_admin=accounts.is_super_admin_email(user.email),
             created_at=user.created_at,
             active_reservation_count=counts.get(user.id, 0),
         )
         for user in users
     ]
+
+
+# ---------- 관리자 권한 주기 / 뺏기 ----------
+
+@router.patch("/users/role", response_model=AdminRoleResult)
+def update_user_role(
+    body: AdminRoleUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_admin),
+) -> AdminRoleResult:
+    """가입한 사람에게 관리자 권한을 주거나 뺏는다.
+
+    터미널의 `scripts/set_admin.py` 와 **완전히 같은 규칙**을 웹으로 연 것이다
+    (판단은 app/services/accounts.py 가 한다).
+
+    막는 경우 (모두 400):
+    - 최고 관리자(환경변수 GPU_RESERVE_SUPER_ADMIN_EMAIL)의 권한 해제 — 본인도 못 한다
+    - 자기 자신의 권한 해제 — 관리자 화면에서 바로 튕겨 나가 혼란스러우므로
+    - 마지막 남은 관리자의 권한 해제 — 아무도 관리자 화면에 못 들어가게 되므로
+
+    없는 사용자면 404. 관리자가 아닌 사람은 라우터 단에서 403으로 막힌다.
+    이미 관리자인 사람을 또 승격하는 것처럼 바뀌는 게 없는 요청은 오류가 아니라
+    200 으로 "바뀐 것이 없습니다" 를 돌려준다.
+    """
+    # 1) 대상 찾기 (user_id 또는 email — 스키마가 둘 중 하나만 오도록 검사한다)
+    if body.user_id is not None:
+        target = db.get(User, body.user_id)
+        못찾음 = f"id {body.user_id} 인 사용자를 찾지 못했습니다."
+    else:
+        target = accounts.find_user(db, str(body.email))
+        못찾음 = f"가입된 적 없는 이메일입니다: {body.email}"
+
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=못찾음)
+
+    # 2) 규칙 검사 + 반영
+    try:
+        결과, user = accounts.change_admin_status(
+            db, target=target, make_admin=body.is_admin, actor=actor
+        )
+    except accounts.AccountError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    안내 = {
+        accounts.PROMOTED: (
+            f"{user.name} 님이 이제 관리자입니다. "
+            "본인이 로그인 중이었다면 로그아웃했다가 다시 로그인해야 관리자 메뉴가 보입니다."
+        ),
+        accounts.REVOKED: (
+            f"{user.name} 님의 관리자 권한을 해제했습니다. "
+            "그 사람 화면에서 관리자 메뉴가 사라집니다."
+        ),
+        accounts.ALREADY_ADMIN: f"{user.name} 님은 이미 관리자입니다. 바뀐 것이 없습니다.",
+        accounts.ALREADY_NORMAL: f"{user.name} 님은 원래 관리자가 아닙니다. 바뀐 것이 없습니다.",
+    }[결과]
+
+    return AdminRoleResult(
+        result=결과,
+        user_id=user.id,
+        name=user.name,
+        email=user.email,
+        is_admin=user.is_admin,
+        message=안내,
+    )

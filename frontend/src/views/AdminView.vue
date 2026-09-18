@@ -3,7 +3,8 @@
 //
 // 탭 두 개로 나뉜다.
 //  1) 전체 예약 — 모든 사람의 예약을 보고, 시작·종료 시각을 고치거나 강제 취소한다.
-//  2) 가입자   — 가입한 사람 목록을 본다. 보기 전용이라 고치거나 지우는 버튼은 없다.
+//  2) 가입자   — 가입한 사람 목록을 보고, 관리자 권한을 주거나 뺄 수 있다.
+//                (계정을 고치거나 지우는 기능은 없다)
 //
 // 규칙: 다른 예약과 겹치면 관리자도 저장할 수 없다.
 //       예약 길이 제한과 '14일 이내 시작' 제한은 없어졌으므로,
@@ -14,7 +15,11 @@
 import { computed, ref } from 'vue'
 
 import { api } from '../api/client'
+import { useAuthStore } from '../stores/auth'
 import { HOURS, formatKst, kstParts, toIso } from '../utils/time'
+
+// 지금 로그인한 관리자 (자기 자신 행을 알아보는 데 쓴다)
+const auth = useAuthStore()
 
 const 탭 = ref('reservations') // reservations / users
 
@@ -177,6 +182,8 @@ function 탭바꾸기(이름) {
   탭.value = 이름
   성공.value = ''
   오류.value = ''
+  가입자성공.value = ''
+  가입자오류.value = ''
   수정중.value = null
   if (이름 === 'users' && 가입자들.value.length === 0) 가입자불러오기()
 }
@@ -184,6 +191,54 @@ function 탭바꾸기(이름) {
 /** 가입일은 시각까지 볼 필요가 없어서 날짜만 보여 준다 */
 function 가입일(iso) {
   return formatKst(iso).slice(0, 10)
+}
+
+// ---------- 관리자 권한 주기 / 뺏기 ----------
+
+const 가입자성공 = ref('')
+const 권한처리중ID = ref(null)
+
+/** 나 자신인가 (본인 해제는 서버가 막으므로 화면에서도 막아 둔다) */
+function 나인가(u) {
+  return auth.user?.id === u.id
+}
+
+/** 이 사람의 권한 버튼을 눌러도 되는가 */
+function 권한바꿀수있나(u) {
+  if (u.is_admin && u.is_super_admin) return false // 최고 관리자는 해제 불가
+  if (u.is_admin && 나인가(u)) return false // 본인 해제 불가
+  return true
+}
+
+/** 버튼을 못 쓰는 이유 (화면에 작게 보여 준다) */
+function 권한못바꾸는이유(u) {
+  if (u.is_admin && u.is_super_admin) return '최고 관리자'
+  if (u.is_admin && 나인가(u)) return '본인'
+  return ''
+}
+
+async function 권한바꾸기(u) {
+  const 올릴까 = !u.is_admin
+  const 물음 = 올릴까
+    ? `${u.name}(${u.email}) 님에게 관리자 권한을 줄까요?\n\n` +
+      '관리자는 모든 사람의 예약을 고치거나 취소할 수 있고, 가입자 목록도 볼 수 있습니다.'
+    : `${u.name}(${u.email}) 님의 관리자 권한을 해제할까요?\n\n` +
+      '그 사람 화면에서 관리자 메뉴가 사라집니다.'
+  if (!window.confirm(물음)) return
+
+  가입자오류.value = ''
+  가입자성공.value = ''
+  권한처리중ID.value = u.id
+  try {
+    const 결과 = await api.adminSetUserRole(u.id, 올릴까)
+    가입자성공.value = 결과.message
+    await 가입자불러오기() // 목록을 다시 받아 상태를 바로 반영한다
+  } catch (e) {
+    // 최고 관리자·본인·마지막 관리자 해제는 서버가 한국어 메시지로 막아 준다
+    가입자오류.value = e.message
+  } finally {
+    권한처리중ID.value = null
+  }
 }
 </script>
 
@@ -310,10 +365,10 @@ function 가입일(iso) {
   <!-- ================= 가입자 ================= -->
   <template v-else>
     <p class="hint intro">
-      가입한 사람 목록입니다. <strong>보기 전용</strong>이라 여기서 계정을 고치거나 지울 수는
-      없습니다.<br />
-      관리자 권한을 주고 빼거나 비밀번호를 재설정하려면 서버에서
-      <code>scripts/set_admin.py</code>, <code>scripts/reset_password.py</code> 를 씁니다.
+      가입한 사람 목록입니다. 여기서 <strong>관리자 권한만</strong> 주거나 뺄 수 있습니다
+      (계정을 고치거나 지울 수는 없습니다).<br />
+      권한을 바꾸면 그 사람은 <strong>로그아웃했다가 다시 로그인해야</strong> 메뉴가 바뀝니다.<br />
+      비밀번호를 재설정하려면 서버에서 <code>scripts/reset_password.py</code> 를 씁니다.
     </p>
 
     <div class="card filters">
@@ -324,6 +379,7 @@ function 가입일(iso) {
     </div>
 
     <p v-if="가입자오류" class="error-box">{{ 가입자오류 }}</p>
+    <p v-if="가입자성공" class="success-box">{{ 가입자성공 }}</p>
     <p v-if="가입자불러오는중" class="hint">불러오는 중…</p>
     <p v-else-if="가입자들.length === 0" class="card hint empty">가입한 사람이 없습니다.</p>
 
@@ -337,6 +393,7 @@ function 가입일(iso) {
               <th>권한</th>
               <th>가입일</th>
               <th class="num">현재·예정 예약</th>
+              <th>권한 바꾸기</th>
             </tr>
           </thead>
           <tbody>
@@ -346,6 +403,7 @@ function 가입일(iso) {
               <td>
                 <span v-if="u.is_admin" class="badge admin">관리자</span>
                 <span v-else class="badge normal">일반</span>
+                <span v-if="u.is_super_admin" class="badge super">최고</span>
               </td>
               <td class="joined">{{ 가입일(u.created_at) }}</td>
               <td class="num">
@@ -354,13 +412,33 @@ function 가입일(iso) {
                 </strong>
                 건
               </td>
+              <td class="role-cell">
+                <button
+                  v-if="권한바꿀수있나(u)"
+                  class="btn-secondary small"
+                  :class="{ danger: u.is_admin }"
+                  :disabled="권한처리중ID === u.id"
+                  @click="권한바꾸기(u)"
+                >
+                  {{
+                    권한처리중ID === u.id
+                      ? '바꾸는 중…'
+                      : u.is_admin
+                        ? '관리자 해제'
+                        : '관리자로 승격'
+                  }}
+                </button>
+                <span v-else class="locked">{{ 권한못바꾸는이유(u) }}이라 해제할 수 없음</span>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
       <p class="hint note">
         '현재·예정 예약'은 지금 사용 중이거나 앞으로 잡혀 있는 예약 수입니다.
-        (취소했거나 이미 끝난 예약은 세지 않습니다)
+        (취소했거나 이미 끝난 예약은 세지 않습니다)<br />
+        <strong>최고</strong> 표시가 붙은 계정과 <strong>본인</strong>은 해제할 수 없습니다.
+        관리자가 한 명도 남지 않는 해제도 서버가 막습니다.
       </p>
     </div>
   </template>
@@ -524,6 +602,21 @@ h1 {
 .badge.admin {
   background: #e6effc;
   color: #1a53a8;
+}
+
+.badge.super {
+  background: #fdecea;
+  color: var(--red);
+  margin-left: 0.25rem;
+}
+
+.role-cell {
+  white-space: nowrap;
+}
+
+.locked {
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .edit {

@@ -8,7 +8,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_serializer,
+    model_validator,
+)
 
 from app import timeutil
 
@@ -121,6 +128,10 @@ class AdminUserOut(BaseModel):
     name: str
     email: EmailStr
     is_admin: bool
+    # 이 사람이 '아무도 관리자에서 해제할 수 없는' 최고 관리자인가.
+    # 환경변수 GPU_RESERVE_SUPER_ADMIN_EMAIL 로 정한다(없으면 모두 False).
+    # 화면에서 해제 버튼을 감추는 데 쓴다. 실제 차단은 서버가 한다.
+    is_super_admin: bool = False
     created_at: datetime
     # 지금 사용 중이거나 앞으로 예정된 예약 수 (취소·종료된 예약은 세지 않는다)
     active_reservation_count: int
@@ -128,3 +139,33 @@ class AdminUserOut(BaseModel):
     @field_serializer("created_at")
     def _with_kst_offset(self, value: datetime) -> datetime:
         return timeutil.as_aware(value)
+
+
+class AdminRoleUpdate(BaseModel):
+    """관리자 권한을 주거나 뺏는 요청.
+
+    대상은 user_id 또는 email 중 **하나만** 준다.
+    (화면은 목록에 있는 user_id 를 쓰고, 터미널·직접 호출은 email 이 편하다)
+    """
+
+    is_admin: bool
+    user_id: int | None = None
+    email: EmailStr | None = None
+
+    @model_validator(mode="after")
+    def _대상은_하나만(self) -> "AdminRoleUpdate":
+        if (self.user_id is None) == (self.email is None):
+            raise ValueError("user_id 와 email 중 정확히 하나만 지정해 주세요.")
+        return self
+
+
+class AdminRoleResult(BaseModel):
+    """권한 변경 결과. 화면이 그대로 보여 줄 수 있는 한국어 메시지를 함께 준다."""
+
+    # promoted / revoked / already_admin / already_normal
+    result: str
+    user_id: int
+    name: str
+    email: EmailStr
+    is_admin: bool
+    message: str

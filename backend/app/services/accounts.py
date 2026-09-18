@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import os
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -136,3 +138,74 @@ def set_admin(db: Session, email: str, *, make_admin: bool) -> tuple[str, User]:
     db.commit()
     db.refresh(user)
     return REVOKED, user
+
+
+# ---------------------------------------------------------------------------
+# 웹 화면에서 관리자 권한 바꾸기 (관리자 화면의 '가입자' 탭)
+# ---------------------------------------------------------------------------
+# 위의 set_admin() 은 터미널 스크립트(scripts/set_admin.py)가 쓰는 함수다.
+# 웹에서는 규칙이 두 가지 더 필요하다.
+#
+#   1) 슈퍼 관리자 보호 — 정해 둔 이메일 한 개는 누구도(본인 포함) 해제할 수 없다.
+#      이 이메일은 코드에 적지 않고 환경변수로 받는다. 환경변수가 없으면
+#      '보호할 대상이 없는' 것으로 보고 이 보호만 꺼진다. (나머지 기능은 그대로 동작)
+#
+#   2) 본인 해제 금지 — 관리자가 자기 권한을 스스로 빼면 그 순간 관리자 화면에서
+#      튕겨 나가 혼란스럽다. 다른 관리자에게 부탁하도록 막는다.
+#
+# '마지막 남은 관리자는 해제할 수 없다'는 규칙은 set_admin() 이 이미 하고 있으므로
+# 그대로 재사용한다. 터미널과 웹이 같은 규칙을 쓰게 하기 위해서다.
+
+#: 슈퍼 관리자 이메일을 담는 환경변수 이름 (값은 Vercel 대시보드 등에서 넣는다)
+ENV_SUPER_ADMIN_EMAIL = "GPU_RESERVE_SUPER_ADMIN_EMAIL"
+
+
+def super_admin_email() -> str | None:
+    """보호할 슈퍼 관리자 이메일. 환경변수가 없거나 비어 있으면 None.
+
+    호출할 때마다 환경변수를 읽는다(불러올 때 한 번만 읽지 않는다).
+    그래야 테스트에서 값을 바꿔 가며 확인할 수 있다.
+    """
+    value = os.environ.get(ENV_SUPER_ADMIN_EMAIL, "").strip().lower()
+    return value or None
+
+
+def is_super_admin_email(email: str | None) -> bool:
+    """이 이메일이 보호 대상(슈퍼 관리자)인가. 환경변수가 없으면 항상 False."""
+    보호대상 = super_admin_email()
+    if 보호대상 is None:
+        return False
+    return (email or "").strip().lower() == 보호대상
+
+
+def change_admin_status(
+    db: Session,
+    *,
+    target: User,
+    make_admin: bool,
+    actor: User | None = None,
+) -> tuple[str, User]:
+    """웹 화면에서 관리자 권한을 주거나 뺏는다.
+
+    target: 권한을 바꿀 사람 (라우터가 id 나 이메일로 이미 찾아 둔 사용자)
+    actor:  이 작업을 하는 관리자 (본인 해제를 막는 데 쓴다)
+
+    규칙을 어기면 AccountError 를 던진다. 돌려주는 값은 set_admin() 과 같다.
+    """
+    if not make_admin:
+        # 1) 슈퍼 관리자는 누구도 해제할 수 없다 (본인도 마찬가지)
+        if is_super_admin_email(target.email):
+            raise AccountError(
+                f"{target.name}({target.email}) 님은 이 서비스의 최고 관리자입니다. "
+                "관리자 권한을 해제할 수 없습니다."
+            )
+
+        # 2) 자기 자신은 해제할 수 없다
+        if actor is not None and actor.id == target.id:
+            raise AccountError(
+                "자기 자신의 관리자 권한은 해제할 수 없습니다. "
+                "다른 관리자에게 부탁해 주세요."
+            )
+
+    # 3) 나머지 규칙(마지막 관리자 보호, 이미 관리자/일반인 경우)은 터미널과 동일하다
+    return set_admin(db, target.email, make_admin=make_admin)
