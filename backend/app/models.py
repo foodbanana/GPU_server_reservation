@@ -108,3 +108,62 @@ class Reservation(Base):
     @property
     def gpu_label(self) -> str:
         return self.gpu.label if self.gpu else ""
+
+
+# ---------------------------------------------------------------------------
+# Postgres 전용: 시간이 겹치는 예약을 DB가 직접 거부하게 하는 제약
+# ---------------------------------------------------------------------------
+# SQLite 에서는 database.py 의 BEGIN IMMEDIATE 잠금이 이 역할을 한다.
+# Postgres 에는 그런 잠금이 없어서, 두 사람이 동시에 신청하면
+# 둘 다 "겹치는 예약 없음"을 보고 둘 다 저장해 버릴 수 있다.
+# 그래서 테이블 자체에 "같은 GPU + 시간 겹침" 을 금지하는 제약(EXCLUDE)을 건다.
+# 이러면 파이썬 코드가 어떻게 돌든 DB가 마지막에 막아 준다.
+#
+# 참고 1) `WHERE (status = 'active')` — 취소된 예약은 검사하지 않는다.
+#         그래야 취소한 시간을 다른 사람이 다시 예약할 수 있다.
+# 참고 2) `tstzrange(...)` 안에 `timezone('Asia/Seoul', ...)` 를 감싼 이유:
+#         우리 DB의 start_at / end_at 은 시간대 정보가 없는 값(KST 기준)이다
+#         (timeutil.py 참고). Postgres 가 이걸 알아서 시간대 있는 값으로 바꾸게 두면
+#         "서버 시간대 설정에 따라 결과가 달라지는 계산"이 되어 제약에 쓸 수 없다.
+#         `timezone('Asia/Seoul', ...)` 로 시간대를 못 박아 주면 항상 같은 결과가
+#         나오므로 제약에 쓸 수 있다. (한국은 서머타임이 없어 단순 +09:00 이다)
+# 참고 3) `[start_at, end_at)` — 시작은 포함, 종료는 제외. 그래서 10시 종료와
+#         10시 시작은 겹치지 않는다 (SPEC 5장의 겹침 정의와 같다).
+
+#: 제약 이름. 오류 메시지에서 "겹침 때문에 거부됐다"를 알아보는 데도 쓴다.
+OVERLAP_CONSTRAINT = "reservations_no_overlap"
+
+_CREATE_OVERLAP_CONSTRAINT_SQL = f"""
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = '{OVERLAP_CONSTRAINT}'
+    ) THEN
+        ALTER TABLE reservations
+            ADD CONSTRAINT {OVERLAP_CONSTRAINT}
+            EXCLUDE USING gist (
+                gpu_id WITH =,
+                tstzrange(
+                    timezone('Asia/Seoul', start_at),
+                    timezone('Asia/Seoul', end_at)
+                ) WITH &&
+            ) WHERE (status = '{STATUS_ACTIVE}');
+    END IF;
+END
+$$;
+"""
+
+
+def ensure_overlap_constraint(bind) -> None:  # noqa: ANN001
+    """Postgres 라면 겹침 금지 제약을 만든다. SQLite 면 아무것도 하지 않는다.
+
+    테이블을 만든 뒤에 한 번 불러 주면 된다(main.py, tests/conftest.py).
+    이미 제약이 있으면 그냥 넘어가므로 여러 번 불러도 괜찮다.
+    """
+    if bind.dialect.name != "postgresql":
+        return
+
+    with bind.begin() as conn:
+        # gist 인덱스에서 정수(gpu_id)를 `=` 로 비교하려면 이 확장이 필요하다.
+        conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS btree_gist")
+        conn.exec_driver_sql(_CREATE_OVERLAP_CONSTRAINT_SQL)

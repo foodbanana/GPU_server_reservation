@@ -6,6 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import timeutil
@@ -14,8 +15,10 @@ from app.deps import get_current_user
 from app.models import Gpu, Reservation, STATUS_ACTIVE, STATUS_CANCELLED, User
 from app.schemas import ReservationCreate, ReservationOut
 from app.services.reservation_rules import (
+    CONCURRENT_CONFLICT_MESSAGE,
     ConflictError,
     RuleError,
+    is_overlap_violation,
     validate_reservation,
 )
 
@@ -37,8 +40,11 @@ def create_reservation(
     """예약을 만든다.
 
     규칙 위반은 400, 시간이 겹치면 409로 응답한다.
-    '겹침 확인 → 저장'을 하나의 트랜잭션(BEGIN IMMEDIATE) 안에서 처리하므로
-    두 사람이 같은 순간에 눌러도 한 명만 성공한다(database.py 참고).
+
+    두 사람이 같은 순간에 눌러도 한 명만 성공해야 한다. 이건 DB가 보장한다.
+    - SQLite: '겹침 확인 → 저장'을 하나의 트랜잭션(BEGIN IMMEDIATE) 안에서 처리
+    - Postgres: 테이블의 겹침 금지 제약이 나중에 온 INSERT 를 거부
+    두 경우 모두 database.py / models.py 참고.
     """
     gpu = db.get(Gpu, body.gpu_id)
     if gpu is None:
@@ -66,7 +72,18 @@ def create_reservation(
         status=STATUS_ACTIVE,
     )
     db.add(reservation)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # 사전 검사(validate_reservation)를 통과했는데도 저장이 거부됐다면
+        # 바로 그 사이에 다른 사람이 같은 시간을 먼저 넣었다는 뜻이다.
+        # (Postgres 의 겹침 금지 제약이 막아 준 경우 — models.py 참고)
+        db.rollback()
+        if not is_overlap_violation(exc):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=CONCURRENT_CONFLICT_MESSAGE
+        )
     db.refresh(reservation)
     return reservation
 

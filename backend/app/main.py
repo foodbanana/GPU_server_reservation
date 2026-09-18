@@ -8,7 +8,12 @@ from fastapi import FastAPI
 
 from app.config import get_config
 from app.database import Base, SessionLocal, engine
-from app.models import Gpu, Reservation, User  # noqa: F401  (테이블 등록에 필요)
+from app.models import (  # noqa: F401  (Gpu/Reservation/User 는 테이블 등록에 필요)
+    Gpu,
+    Reservation,
+    User,
+    ensure_overlap_constraint,
+)
 from app.routers import admin, auth, gpus, reservations
 from app.seed import seed_gpus
 from app.static_files import mount_frontend
@@ -18,6 +23,8 @@ from app.static_files import mount_frontend
 async def lifespan(_app: FastAPI):
     # 앱을 켤 때: 없는 테이블을 만들고, config.yaml 기준으로 GPU 12장을 등록·갱신한다.
     Base.metadata.create_all(bind=engine)
+    # Postgres 면 '시간 겹침 금지' 제약도 걸어 둔다 (SQLite 면 아무 일도 안 한다).
+    ensure_overlap_constraint(engine)
     with SessionLocal() as db:
         seed_gpus(db)
     yield

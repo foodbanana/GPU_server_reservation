@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import timeutil
-from app.models import Gpu, Reservation, STATUS_ACTIVE
+from app.models import Gpu, OVERLAP_CONSTRAINT, Reservation, STATUS_ACTIVE
 
 
 class RuleError(Exception):
@@ -124,3 +124,25 @@ def find_conflict(
         # 수정할 때는 자기 자신과 겹친다고 하면 안 된다.
         query = query.where(Reservation.id != exclude_reservation_id)
     return db.scalars(query).first()
+
+
+# ---------------------------------------------------------------------------
+# DB가 마지막에 막아 준 경우 (Postgres 전용)
+# ---------------------------------------------------------------------------
+# 위의 find_conflict 는 '저장하기 전에' 친절한 메시지를 만들어 주는 사전 검사다.
+# 하지만 두 사람이 정말 같은 순간에 눌렀다면 둘 다 이 검사를 통과할 수 있다.
+# 그때 진짜로 막아 주는 건 Postgres 의 겹침 금지 제약(models.py)이고,
+# 제약에 걸리면 저장(commit) 순간에 IntegrityError 가 난다.
+# 그 오류가 '겹침 때문인지'를 알아보고 409 로 바꾸기 위한 도우미들이다.
+
+#: 사전 검사를 빠져나간 동시 신청에 보여 줄 메시지.
+#: (어떤 예약과 겹쳤는지까지는 알 수 없으므로 사전 검사보다 간단하다)
+CONCURRENT_CONFLICT_MESSAGE = (
+    "방금 다른 사람이 같은 시간을 먼저 예약했습니다. "
+    "화면을 새로고침한 뒤 다른 시간을 선택해 주세요."
+)
+
+
+def is_overlap_violation(exc: Exception) -> bool:
+    """이 IntegrityError 가 '시간 겹침' 제약 때문에 난 것인지."""
+    return OVERLAP_CONSTRAINT in str(getattr(exc, "orig", exc))

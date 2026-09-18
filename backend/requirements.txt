@@ -7,6 +7,10 @@ PyJWT==2.14.0
 bcrypt==5.0.0
 PyYAML==6.0.3
 
+# Postgres(Neon 등) 드라이버.
+# 환경변수 DATABASE_URL 이 있을 때만 쓰인다. 없으면 지금처럼 SQLite 로 돈다.
+psycopg[binary]==3.3.5
+
 # 테스트용
 pytest==9.1.1
 httpx==0.28.1

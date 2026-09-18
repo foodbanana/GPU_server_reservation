@@ -2,6 +2,16 @@
 
 - 테스트 전용 config.yaml 과 임시 DB 파일을 만든다 (진짜 DB를 건드리지 않는다).
 - 현재 시각을 마음대로 고정할 수 있게 timeutil.now_kst 를 바꿔치기한다.
+
+**어떤 DB로 테스트하나**
+환경변수 `DATABASE_URL` 이 있으면 그 Postgres 로, 없으면 임시 폴더의 SQLite 파일로
+테스트한다(app/database.py 가 그렇게 고르기 때문에 여기서 따로 할 일은 없다).
+
+    PYTHONPATH= venv/bin/python -m pytest                      # SQLite
+    DATABASE_URL='...' PYTHONPATH= venv/bin/python -m pytest    # Postgres
+
+주의: Postgres 로 돌리면 테스트마다 **그 DB의 테이블을 모두 지우고 다시 만든다.**
+반드시 테스트 전용 DB 주소를 넣어야 한다. 진짜 데이터가 든 DB를 넣으면 안 된다.
 """
 
 from __future__ import annotations
@@ -58,7 +68,7 @@ from sqlalchemy import select  # noqa: E402
 from app import timeutil  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import User  # noqa: E402
+from app.models import User, ensure_overlap_constraint  # noqa: E402
 from app.seed import seed_gpus  # noqa: E402
 
 # 테스트에서 쓰는 '고정된 현재 시각': 2026년 1월 5일 월요일 14시 20분
@@ -92,6 +102,9 @@ def db_session():
     """테스트마다 빈 DB로 시작한다."""
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    # Postgres 면 '시간 겹침 금지' 제약을 다시 걸어 준다 (SQLite 면 아무 일도 안 한다).
+    # 운영에서 main.py 가 하는 일과 같다.
+    ensure_overlap_constraint(engine)
     with SessionLocal() as session:
         seed_gpus(session)
         yield session

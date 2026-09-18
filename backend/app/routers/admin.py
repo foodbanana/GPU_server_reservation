@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import timeutil
@@ -26,8 +27,10 @@ from app.deps import get_current_admin
 from app.models import Reservation, STATUS_ACTIVE, STATUS_CANCELLED, User
 from app.schemas import AdminReservationOut, AdminUserOut, ReservationTimeUpdate
 from app.services.reservation_rules import (
+    CONCURRENT_CONFLICT_MESSAGE,
     ConflictError,
     RuleError,
+    is_overlap_violation,
     validate_reservation,
 )
 
@@ -128,7 +131,17 @@ def update_reservation_time(
 
     reservation.start_at = start_at
     reservation.end_at = end_at
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # 사전 검사와 저장 사이에 다른 사람이 그 시간을 먼저 차지한 경우.
+        # (Postgres 의 겹침 금지 제약이 막아 준다 — models.py 참고)
+        db.rollback()
+        if not is_overlap_violation(exc):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=CONCURRENT_CONFLICT_MESSAGE
+        )
     db.refresh(reservation)
     return reservation
 

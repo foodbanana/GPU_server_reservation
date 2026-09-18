@@ -125,6 +125,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # 이 스크립트는 'backend/demo 폴더 안의 SQLite 파일'에만 데이터를 넣는 도구다.
+    # DATABASE_URL 이 켜져 있으면 app 이 그 Postgres 를 쓰게 되므로,
+    # 진짜 DB에 데모 데이터를 쏟아붓는 사고를 막기 위해 아예 실행을 거부한다.
+    if os.environ.get("DATABASE_URL", "").strip():
+        print(
+            "DATABASE_URL 환경변수가 켜져 있습니다.\n"
+            "이 스크립트는 데모용 SQLite 파일에만 쓰도록 만들어졌고, 켜진 상태로는\n"
+            "그 Postgres DB에 데모 데이터를 넣게 되어 위험합니다.\n"
+            "해당 환경변수를 끄고(DATABASE_URL= ) 다시 실행해 주세요."
+        )
+        raise SystemExit(1)
+
     demo_dir = Path(args.dir).resolve()
     config_path, db_path = 데모설정만들기(demo_dir)
     안전검사(db_path)
