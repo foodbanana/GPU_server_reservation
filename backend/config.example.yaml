@@ -33,10 +33,10 @@ gpus:                         # 서버3 A100/maxQ 번호가 반대면 여기만 
   - { server_no: 2, gpu_index: 1, model: "RTX 3090",  category: short }
   - { server_no: 2, gpu_index: 2, model: "RTX 3090",  category: long  }
   - { server_no: 2, gpu_index: 3, model: "RTX 3090",  category: long  }
-  - { server_no: 3, gpu_index: 0, model: "A100",      category: short }
-  - { server_no: 3, gpu_index: 1, model: "A100",      category: long  }
-  - { server_no: 3, gpu_index: 2, model: "maxQ 6000", category: short }
-  - { server_no: 3, gpu_index: 3, model: "maxQ 6000", category: long  }
+  - { server_no: 3, gpu_index: 0, model: "Max-Q 6000", category: short }
+  - { server_no: 3, gpu_index: 1, model: "Max-Q 6000", category: long  }
+  - { server_no: 3, gpu_index: 2, model: "A100",       category: short }
+  - { server_no: 3, gpu_index: 3, model: "A100",       category: long  }
 
 google:                       # Phase 6에서 사용. Phase 1에서는 읽기만 하고 쓰지 않는다.
   enabled: false
