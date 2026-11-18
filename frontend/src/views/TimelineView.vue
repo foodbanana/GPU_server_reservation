@@ -3,7 +3,16 @@
 //
 // 표는 '기준날짜 0시'부터 일수(기본 14일)만큼 그린다.
 // 기준날짜를 앞뒤로 옮기는 버튼이 있어서 2주 뒤, 4주 뒤 예약도 볼 수 있다.
-// 1분마다 현재 시각과 예약 목록을 새로 받아서 세로선과 색이 저절로 맞춰지게 한다.
+//
+// [DB 사용량 절약]
+// 예전에는 1분마다 서버에서 예약 목록을 다시 받아 왔다. 그런데 Neon(DB)은 5분 동안
+// 요청이 없어야 잠들고, 잠들어야 사용 시간(CU-hour)이 쌓이지 않는다.
+// 탭 하나만 열어 둬도 DB가 24시간 깨어 있어 무료 한도를 넘겼다.
+// 그래서 지금은
+//   - 현재 시각 세로선과 칸 색(예약됨/사용 중/지난 시간)은 1분마다 '브라우저 안에서만' 갱신하고
+//   - 예약 목록은 처음 열 때, 기간을 옮길 때, 새로고침 버튼을 누를 때,
+//     그리고 '다른 탭에 있다가 이 탭으로 돌아왔을 때'만 서버에서 받아 온다.
+// 아무도 화면을 보고 있지 않으면 서버 요청이 0이 되어 DB가 잠들 수 있다.
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -25,7 +34,10 @@ const 마지막갱신 = ref(null)
 
 const grid = ref(null)
 
-let 타이머 = null
+let 시계타이머 = null
+
+/** 탭으로 돌아왔을 때, 마지막으로 받아 온 지 이만큼 지났으면 다시 받아 온다 (탭을 빠르게 오갈 때 요청이 몰리지 않게) */
+const 복귀갱신간격ms = 60 * 1000
 
 /** 조회 범위: 기준날짜 0시 ~ 일수 뒤 0시 */
 const 조회범위 = computed(() => ({
@@ -93,14 +105,25 @@ watch(기준날짜, () => {
   불러오기()
 })
 
+// 다른 탭에 있다가 이 탭으로 돌아오면, 그사이 다른 사람이 넣은 예약을 보여 주려고 다시 받아 온다.
+function 탭복귀시갱신() {
+  if (document.visibilityState !== 'visible') return
+  지금.value = new Date()
+  if (불러오는중.value) return
+  const 지난시간 = 마지막갱신.value ? Date.now() - 마지막갱신.value.getTime() : Infinity
+  if (지난시간 >= 복귀갱신간격ms) 불러오기()
+}
+
 onMounted(() => {
   불러오기({ 처음: true })
-  // 1분마다 현재 시각 세로선과 예약 목록을 갱신한다 (보고 있는 기간은 그대로 둔다)
-  타이머 = setInterval(() => 불러오기(), 60 * 1000)
+  // 1분마다 현재 시각만 바꾼다. 세로선과 칸 색이 이걸로 맞춰진다. (서버 요청 없음)
+  시계타이머 = setInterval(() => (지금.value = new Date()), 60 * 1000)
+  document.addEventListener('visibilitychange', 탭복귀시갱신)
 })
 
 onBeforeUnmount(() => {
-  if (타이머) clearInterval(타이머)
+  if (시계타이머) clearInterval(시계타이머)
+  document.removeEventListener('visibilitychange', 탭복귀시갱신)
 })
 
 const 갱신시각 = computed(() =>
@@ -158,7 +181,7 @@ const 갱신시각 = computed(() =>
   />
 
   <p v-if="갱신시각" class="hint updated">
-    {{ 갱신시각 }} 기준 (1분마다 자동 갱신) · 좌우로 밀어서 다른 날짜를 볼 수 있습니다.
+    예약 목록은 {{ 갱신시각 }} 기준 (최신 예약을 보려면 '새로고침') · 좌우로 밀어서 다른 날짜를 볼 수 있습니다.
   </p>
 </template>
 
